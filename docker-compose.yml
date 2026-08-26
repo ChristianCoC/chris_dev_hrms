@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: hrms_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: hrms_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mi_password_chris_dev_hrms
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: hrms_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@devpro.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres_db
+
+volumes:
+  pgdata:
