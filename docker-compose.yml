@@ -6,9 +6,9 @@ services:
     container_name: hrms_postgres
     restart: always
     environment:
-      POSTGRES_DB: hrms_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: mi_password_chris_dev_hrms
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5433:5432"
     volumes:
@@ -19,8 +19,8 @@ services:
     container_name: hrms_pgadmin
     restart: always
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@devpro.com
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
     ports:
       - "5050:80"
     depends_on:
