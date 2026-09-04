@@ -38,6 +38,7 @@ coverage/
 # Bases de datos locales y dumps
 *.dump.sql
 *.sqlite
+*.yml
 
 # Archivos temporales
 tmp/

@@ -6,7 +6,7 @@ CREATE TABLE roles (
 );
 
 CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email VARCHAR(255) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,
   first_name VARCHAR(100) NOT NULL,
@@ -20,35 +20,35 @@ CREATE TABLE users (
 );
 
 CREATE TABLE claims (
-  id SERIAL PRIMARY KEY,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title VARCHAR(200) NOT NULL,
   description TEXT NOT NULL,
   status VARCHAR(50) NOT NULL DEFAULT 'pending',
   priority VARCHAR(50) DEFAULT 'normal',
-  filed_by_id INT NOT NULL REFERENCES users(id),
-  assigned_to_id INT REFERENCES users(id),
+  filed_by_id UUID NOT NULL REFERENCES users(id),
+  assigned_to_id UUID REFERENCES users(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   resolved_at TIMESTAMP,
   resolution_notes TEXT
 );
 
 CREATE TABLE notifications (
-  id SERIAL PRIMARY KEY,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title VARCHAR(200) NOT NULL,
   message TEXT NOT NULL,
   type VARCHAR(50) NOT NULL,
-  user_id INT NOT NULL REFERENCES users(id),
+  user_id UUID NOT NULL REFERENCES users(id),
   is_read BOOLEAN DEFAULT false,
-  related_claim_id INT REFERENCES claims(id),
+  related_claim_id UUID REFERENCES claims(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE audit_logs (
   id SERIAL PRIMARY KEY,
-  user_id INT NOT NULL REFERENCES users(id),
+  user_id UUID NOT NULL REFERENCES users(id),
   action VARCHAR(100) NOT NULL,
   entity_type VARCHAR(100) NOT NULL,
-  entity_id INT,
+  entity_id VARCHAR(255),
   old_values JSONB,
   new_values JSONB,
   ip_address VARCHAR(45),

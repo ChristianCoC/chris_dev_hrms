@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { testConnection, closePool } from './config/db.js';
+import { registerUser } from './controllers/authController.js';
+import { loginUser } from './controllers/loginController.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -79,11 +81,10 @@ app.get('/api/health', async (req, res) => {
 });
 
 /**
- * Rutas futuras (placeholder)
+ * Autenticación
  */
-app.use('/api/auth', (req, res) => {
-  res.json({ message: 'Auth routes coming soon...' });
-});
+app.post('/api/auth/register', registerUser);
+app.post('/api/auth/login', loginUser);
 
 app.use('/api/employees', (req, res) => {
   res.json({ message: 'Employee routes coming soon...' });
