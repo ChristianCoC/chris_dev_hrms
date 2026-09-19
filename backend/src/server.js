@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import { testConnection, closePool } from './config/db.js';
 import { registerUser } from './controllers/authController.js';
 import { loginUser } from './controllers/loginController.js';
+import userRoutes from './routes/userRoutes.js';
+import claimRoutes from './routes/claimRoutes.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -85,14 +87,13 @@ app.get('/api/health', async (req, res) => {
  */
 app.post('/api/auth/register', registerUser);
 app.post('/api/auth/login', loginUser);
+app.use('/api/users', userRoutes);
 
 app.use('/api/employees', (req, res) => {
   res.json({ message: 'Employee routes coming soon...' });
 });
 
-app.use('/api/claims', (req, res) => {
-  res.json({ message: 'Claims routes coming soon...' });
-});
+app.use('/api/claims', claimRoutes);
 
 app.use('/api/notifications', (req, res) => {
   res.json({ message: 'Notifications routes coming soon...' });
