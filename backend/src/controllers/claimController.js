@@ -51,7 +51,7 @@ export const resolveClaim = async (req, res) => {
 
   try {
     const checkClaim = await query(
-      "SELECT id, status FROM claims WHERE id = $1",
+      "SELECT id, title, status, filed_by_id FROM claims WHERE id = $1",
       [id],
     );
     if (checkClaim.rowCount === 0) {
@@ -60,6 +60,8 @@ export const resolveClaim = async (req, res) => {
         message: "Reclamo no encontrado.",
       });
     }
+
+    const claimData = checkClaim.rows[0];
 
     const result = await query(
       `UPDATE claims 
@@ -72,9 +74,18 @@ export const resolveClaim = async (req, res) => {
       [status, resolution_notes, assigned_to_id, id],
     );
 
+    const notificationTitle = 'Actualización de Reclamo';
+    const notificationMessage = `El reclamo "${claimData.title}" ha sido actualizado al estado: ${status}.`;
+    const notificationType = 'claim_update';
+
+    await query(
+      "INSERT INTO notifications (title, message, type, user_id, related_claim_id) VALUES ($1, $2, $3, $4, $5)",
+      [notificationTitle, notificationMessage, notificationType, claimData.filed_by_id, id]
+    );
+
     return res.status(200).json({
       status: "success",
-      message: `Reclamo resuelto correctamente a estado: ${status}.`,
+      message: `Reclamo resuelto correctamente a estado: ${status} y el empleado ha sido notificado.`,
       data: {
         claim: result.rows[0],
       },
