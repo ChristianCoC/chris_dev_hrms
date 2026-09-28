@@ -1,4 +1,5 @@
 import { query } from "../config/db.js";
+import { logAuditEvent } from "../services/auditService.js";
 
 export const getAllUsers = async (req, res) => {
   try {
@@ -33,7 +34,7 @@ export const deleteUser = async (req, res) => {
   }
 
   try {
-    const userChek = await query("SELECT id FROM users WHERE id = $1", [id]);
+    const userChek = await query("SELECT id, email, first_name, last_name, role_id FROM users WHERE id = $1", [id]);
 
     if (userChek.rowCount === 0) {
       return res.status(404).json({
@@ -42,7 +43,25 @@ export const deleteUser = async (req, res) => {
       });
     }
 
+    const deletedUserData = userChek.rows[0];
+
     await query("DELETE FROM users WHERE id = $1", [id]);
+
+    // Registrar evento de auditoría
+    const ipAddress = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || null;
+    await logAuditEvent({
+      userId: req.user.id,
+      action: "USER_DELETED",
+      entityType: "users",
+      entityId: id,
+      oldValues: {
+        email: deletedUserData.email,
+        first_name: deletedUserData.first_name,
+        last_name: deletedUserData.last_name,
+        role_id: deletedUserData.role_id,
+      },
+      ipAddress,
+    });
 
     return res.status(200).json({
       status: "success",
@@ -123,11 +142,28 @@ export const updateUser = async (req, res) => {
       });
     }
 
+    const updatedUser = result.rows[0];
+
+    // Registrar evento de auditoría
+    const ipAddress = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || null;
+    await logAuditEvent({
+      userId: req.user.id,
+      action: "USER_UPDATED",
+      entityType: "users",
+      entityId: id,
+      newValues: {
+        first_name: updatedUser.first_name,
+        last_name: updatedUser.last_name,
+        role_id: updatedUser.role_id,
+      },
+      ipAddress,
+    });
+
     return res.status(200).json({
       status: "success",
       message: "Perfil de usuario actualizado correctamente.",
       data: {
-        user: result.rows[0],
+        user: updatedUser,
       },
     });
   } catch (error) {

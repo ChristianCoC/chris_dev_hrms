@@ -7,6 +7,8 @@ import { loginUser } from './controllers/loginController.js';
 import userRoutes from './routes/userRoutes.js';
 import claimRoutes from './routes/claimRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import employeeRoutes from './routes/employeeRoutes.js';
+import auditRoutes from './routes/auditRoutes.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -90,13 +92,10 @@ app.post('/api/auth/register', registerUser);
 app.post('/api/auth/login', loginUser);
 app.use('/api/users', userRoutes);
 
-app.use('/api/employees', (req, res) => {
-  res.json({ message: 'Employee routes coming soon...' });
-});
-
+app.use('/api/employees', employeeRoutes);
 app.use('/api/claims', claimRoutes);
-
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/audit-logs', auditRoutes);
 
 /**
  * Manejo de ruta no encontrada (404)

@@ -1,4 +1,5 @@
 import { query } from "../config/db.js";
+import { logAuditEvent } from "../services/auditService.js";
 
 export const createClaim = async (req, res) => {
   const { title, description, priority = "normal" } = req.body;
@@ -18,6 +19,23 @@ export const createClaim = async (req, res) => {
         RETURNING id, title, description, priority, filed_by_id, created_at;`,
       [title, description, priority, filed_by_id],
     );
+
+    const newClaim = result.rows[0];
+
+    // Registrar evento de auditoría
+    const ipAddress = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || null;
+    await logAuditEvent({
+      userId: filed_by_id,
+      action: "CLAIM_CREATED",
+      entityType: "claims",
+      entityId: newClaim.id,
+      newValues: {
+        title: newClaim.title,
+        priority: newClaim.priority,
+        status: "pending",
+      },
+      ipAddress,
+    });
 
     return res.status(201).json({
       status: "success",
@@ -82,6 +100,23 @@ export const resolveClaim = async (req, res) => {
       "INSERT INTO notifications (title, message, type, user_id, related_claim_id) VALUES ($1, $2, $3, $4, $5)",
       [notificationTitle, notificationMessage, notificationType, claimData.filed_by_id, id]
     );
+
+    // Registrar evento de auditoría
+    const ipAddress = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || null;
+    await logAuditEvent({
+      userId: assigned_to_id,
+      action: "CLAIM_STATUS_UPDATED",
+      entityType: "claims",
+      entityId: id,
+      oldValues: {
+        status: claimData.status,
+      },
+      newValues: {
+        status,
+        resolution_notes: resolution_notes || null,
+      },
+      ipAddress,
+    });
 
     return res.status(200).json({
       status: "success",
