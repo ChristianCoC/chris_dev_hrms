@@ -6,6 +6,8 @@ import ProtectedRoute from './components/ProtectedRoute.jsx';
 
 import LoginPage from './pages/LoginPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
+import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx';
+import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import ClaimsPage from './pages/ClaimsPage.jsx';
 import EmployeesPage from './pages/EmployeesPage.jsx';
 import AuditLogsPage from './pages/AuditLogsPage.jsx';
@@ -43,6 +45,14 @@ export const App = () => {
       <Route
         path="/register"
         element={isAuthenticated ? <Navigate to="/claims" replace /> : <RegisterPage />}
+      />
+      <Route
+        path="/forgot-password"
+        element={isAuthenticated ? <Navigate to="/claims" replace /> : <ForgotPasswordPage />}
+      />
+      <Route
+        path="/reset-password"
+        element={isAuthenticated ? <Navigate to="/claims" replace /> : <ResetPasswordPage />}
       />
 
       {/* Rutas Protegidas dentro de AppLayout */}

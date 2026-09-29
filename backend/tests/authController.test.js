@@ -1,7 +1,7 @@
 import test, { describe, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import pool from '../src/config/db.js';
-import { registerUser } from '../src/controllers/authController.js';
+import { registerUser, forgotPassword, resetPassword } from '../src/controllers/authController.js';
 
 const createMockRes = () => {
   return {
@@ -28,7 +28,7 @@ describe('Módulo de Registro (registerUser)', () => {
 
     const basePayload = {
       email: 'test@hrms.com',
-      password: 'password123',
+      password: 'Password123',
       first_name: 'Juan',
       last_name: 'Pérez',
       role_id: 4,
@@ -60,8 +60,37 @@ describe('Módulo de Registro (registerUser)', () => {
     }
   });
 
+  test('debe retornar 400 si la contraseña no cumple con la complejidad requerida', async () => {
+    const invalidPasswords = [
+      'corta1A', // menos de 8 caracteres
+      'solominusculas123', // sin mayúscula
+      'SOLOMAYUSCULAS123', // sin minúscula
+      'SinNumerosLetras', // sin número
+    ];
+
+    for (const invalidPass of invalidPasswords) {
+      const req = {
+        body: {
+          email: 'valido@hrms.com',
+          password: invalidPass,
+          first_name: 'Pedro',
+          last_name: 'Picapiedra',
+          role_id: 4,
+        },
+      };
+      const res = createMockRes();
+      await registerUser(req, res);
+
+      assert.equal(res.statusCode, 400);
+      assert.equal(res.body.status, 'error');
+      assert.equal(
+        res.body.message,
+        'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.'
+      );
+    }
+  });
+
   test('debe retornar 400 si el email ya se encuentra registrado', async () => {
-    // Mockear pool.query para simular que el email ya existe
     mock.method(pool, 'query', async (sql) => {
       if (typeof sql === 'string' && sql.includes('SELECT id FROM users WHERE email')) {
         return { rows: [{ id: 'existing-uuid-123' }], rowCount: 1 };
@@ -72,7 +101,7 @@ describe('Módulo de Registro (registerUser)', () => {
     const req = {
       body: {
         email: 'existente@hrms.com',
-        password: 'password123',
+        password: 'Password123',
         first_name: 'Carlos',
         last_name: 'Gómez',
         role_id: 4,
@@ -91,11 +120,9 @@ describe('Módulo de Registro (registerUser)', () => {
 
   test('debe registrar un usuario exitosamente con status 201 y no exponer la contraseña', async () => {
     mock.method(pool, 'query', async (sql) => {
-      // 1. Verificación de email existente -> 0 filas
       if (typeof sql === 'string' && sql.includes('SELECT id FROM users WHERE email')) {
         return { rows: [], rowCount: 0 };
       }
-      // 2. Inserción de usuario
       if (typeof sql === 'string' && sql.includes('INSERT INTO users')) {
         return {
           rows: [
@@ -144,7 +171,7 @@ describe('Módulo de Registro (registerUser)', () => {
     const req = {
       body: {
         email: 'error@hrms.com',
-        password: 'password123',
+        password: 'Password123',
         first_name: 'Error',
         last_name: 'Test',
         role_id: 4,
@@ -159,5 +186,101 @@ describe('Módulo de Registro (registerUser)', () => {
     assert.equal(res.statusCode, 500);
     assert.equal(res.body.status, 'error');
     assert.match(res.body.message, /Error interno al registrar el usuario/i);
+  });
+});
+
+describe('Módulo de Recuperación de Contraseña (forgotPassword & resetPassword)', () => {
+  test('forgotPassword debe retornar 400 si falta el email', async () => {
+    const req = { body: {} };
+    const res = createMockRes();
+
+    await forgotPassword(req, res);
+
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body.status, 'error');
+    assert.match(res.body.message, /correo electrónico es requerido/i);
+  });
+
+  test('forgotPassword debe responder 200 con mensaje genérico seguro si el email no existe', async () => {
+    mock.method(pool, 'query', async () => ({ rows: [], rowCount: 0 }));
+
+    const req = { body: { email: 'no_existe@hrms.com' } };
+    const res = createMockRes();
+
+    await forgotPassword(req, res);
+
+    mock.reset();
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.status, 'success');
+    assert.match(res.body.message, /recibirás un enlace/i);
+  });
+
+  test('resetPassword debe retornar 400 si falta el token o la contraseña', async () => {
+    // 1. Falta password
+    {
+      const req = { body: { token: 'sample-token' } };
+      const res = createMockRes();
+      await resetPassword(req, res);
+      assert.equal(res.statusCode, 400);
+      assert.equal(res.body.status, 'error');
+    }
+
+    // 2. Falta token
+    {
+      const req = { body: { password: 'NewPassword123!' } };
+      const res = createMockRes();
+      await resetPassword(req, res);
+      assert.equal(res.statusCode, 400);
+      assert.equal(res.body.status, 'error');
+    }
+  });
+
+  test('resetPassword debe retornar 400 si la nueva contraseña no cumple con la complejidad requerida', async () => {
+    const req = { body: { token: 'sample-token', password: 'invalida' } };
+    const res = createMockRes();
+    await resetPassword(req, res);
+
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body.status, 'error');
+    assert.equal(
+      res.body.message,
+      'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.'
+    );
+  });
+
+  test('resetPassword debe retornar 400 si el token es inválido o expiró', async () => {
+    mock.method(pool, 'query', async () => ({ rows: [], rowCount: 0 }));
+
+    const req = { body: { token: 'token-invalido', password: 'NewPassword123!' } };
+    const res = createMockRes();
+
+    await resetPassword(req, res);
+
+    mock.reset();
+
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body.status, 'error');
+    assert.match(res.body.message, /inválido o ha expirado/i);
+  });
+
+  test('resetPassword debe actualizar contraseña y retornar 200 si el token es válido', async () => {
+    mock.method(pool, 'query', async (sql) => {
+      if (typeof sql === 'string' && sql.includes('SELECT id, email FROM users WHERE reset_token')) {
+        return { rows: [{ id: 'user-uuid-123', email: 'user@hrms.com' }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const req = { body: { token: 'valid-token', password: 'NewSecurePassword123!' } };
+    const res = createMockRes();
+
+    await resetPassword(req, res);
+
+    mock.reset();
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.status, 'success');
+    assert.match(res.body.message, /actualizada correctamente/i);
   });
 });

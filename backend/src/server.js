@@ -2,8 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { testConnection, closePool } from './config/db.js';
-import { registerUser } from './controllers/authController.js';
-import { loginUser } from './controllers/loginController.js';
+import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import claimRoutes from './routes/claimRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
@@ -86,10 +85,9 @@ app.get('/api/health', async (req, res) => {
 });
 
 /**
- * Autenticación
+ * Autenticación y recuperación de credenciales
  */
-app.post('/api/auth/register', registerUser);
-app.post('/api/auth/login', loginUser);
+app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 
 app.use('/api/employees', employeeRoutes);

@@ -15,6 +15,8 @@ CREATE TABLE users (
   department VARCHAR(100),
   hire_date DATE,
   role_id INT NOT NULL REFERENCES roles(id),
+  reset_token VARCHAR(255),
+  reset_token_expires TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP
 );
