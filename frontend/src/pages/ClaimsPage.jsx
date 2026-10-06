@@ -26,6 +26,15 @@ export const ClaimsPage = () => {
   const [actionSuccess, setActionSuccess] = useState('');
 
   const { isAdminOrHR, user } = useAuth();
+  const isClaimClosed = selectedClaim?.status === 'approved' || selectedClaim?.status === 'rejected';
+
+  useEffect(() => {
+    if (selectedClaim?.status && ['approved', 'rejected', 'in_progress'].includes(selectedClaim.status)) {
+      setResolveStatus(selectedClaim.status);
+    } else {
+      setResolveStatus('approved');
+    }
+  }, [selectedClaim]);
 
   const fetchClaims = async () => {
     try {
@@ -81,7 +90,7 @@ export const ClaimsPage = () => {
 
   const handleResolveClaim = async (e) => {
     e.preventDefault();
-    if (!selectedClaim) return;
+    if (!selectedClaim || isClaimClosed) return;
 
     try {
       setResolvingClaim(true);
@@ -220,7 +229,10 @@ export const ClaimsPage = () => {
                 return (
                   <div
                     key={claim.id}
-                    onClick={() => setSelectedClaim(claim)}
+                    onClick={() => {
+                      setSelectedClaim(claim);
+                      setResolutionNotes('');
+                    }}
                     className={`p-4 cursor-pointer transition-colors ${
                       isSelected
                         ? 'bg-blue-50/60 border-l-4 border-l-blue-600'
@@ -328,7 +340,10 @@ export const ClaimsPage = () => {
                       <select
                         value={resolveStatus}
                         onChange={(e) => setResolveStatus(e.target.value)}
-                        className="w-full sm:w-64 px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                        disabled={isClaimClosed}
+                        className={`w-full sm:w-64 px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-opacity ${
+                          isClaimClosed ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''
+                        }`}
                       >
                         <option value="approved">Aprobar solicitud</option>
                         <option value="rejected">Rechazar solicitud</option>
@@ -340,29 +355,56 @@ export const ClaimsPage = () => {
                       <label className="block text-xs font-medium text-slate-700 mb-1">
                         Notas u observaciones para el empleado
                       </label>
-                      <textarea
-                        rows={3}
-                        value={resolutionNotes}
-                        onChange={(e) => setResolutionNotes(e.target.value)}
-                        placeholder="Explica el dictamen o las acciones a seguir tomadas por RRHH..."
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-blue-600 placeholder:text-slate-400"
-                      />
+                      <div className="relative">
+                        <textarea
+                          rows={3}
+                          value={resolutionNotes}
+                          onChange={(e) => {
+                            if (e.target.value.length <= 500) {
+                              setResolutionNotes(e.target.value);
+                            }
+                          }}
+                          maxLength={500}
+                          disabled={isClaimClosed}
+                          placeholder={
+                            isClaimClosed
+                              ? 'El dictamen ha sido cerrado y no admite nuevas notas.'
+                              : 'Explica el dictamen o las acciones a seguir tomadas por RRHH...'
+                          }
+                          className={`w-full px-3 py-2 pb-6 rounded-lg border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-blue-600 placeholder:text-slate-400 transition-opacity ${
+                            isClaimClosed ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''
+                          }`}
+                        />
+                        <div
+                          className={`absolute right-2.5 bottom-2 text-[10px] font-mono pointer-events-none select-none ${
+                            resolutionNotes.length >= 500 ? 'text-amber-600 font-bold' : 'text-slate-400'
+                          } ${isClaimClosed ? 'opacity-50' : ''}`}
+                        >
+                          {resolutionNotes.length}/500
+                        </div>
+                      </div>
                     </div>
 
                     <button
                       type="submit"
-                      disabled={resolvingClaim}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50"
+                      disabled={resolvingClaim || isClaimClosed}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {resolvingClaim ? 'Actualizando...' : 'Guardar dictamen y notificar al empleado'}
+                      {resolvingClaim
+                        ? 'Actualizando...'
+                        : isClaimClosed
+                        ? 'Dictamen cerrado'
+                        : 'Guardar dictamen y notificar al empleado'}
                     </button>
                   </form>
                 </div>
               ) : (
-                <div className="mt-4 text-xs text-slate-400">
-                  {selectedClaim.status === 'pending'
-                    ? 'Tu solicitud está en cola de revisión por el departamento de Recursos Humanos.'
-                    : `Esta solicitud fue atendida y clasificada como "${selectedClaim.status}".`}
+                <div className="mt-4">
+                  {selectedClaim.status === 'pending' && (
+                    <p className="text-xs text-slate-400">
+                      Tu solicitud está en cola de revisión por el departamento de Recursos Humanos.
+                    </p>
+                  )}
                 </div>
               )}
             </div>

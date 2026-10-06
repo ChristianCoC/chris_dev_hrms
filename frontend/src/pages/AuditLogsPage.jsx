@@ -69,7 +69,9 @@ export const AuditLogsPage = () => {
             <span>Registro de Auditoría y Trazabilidad</span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Historial inmutable de operaciones sensibles ejecutadas en la plataforma ({totalRecords} eventos registrados)
+            Historial inmutable de operaciones sensibles ejecutadas en la plataforma (
+            {totalRecords === 1 ? '1 evento registrado' : `${totalRecords} eventos registrados`}
+            )
           </p>
         </div>
 

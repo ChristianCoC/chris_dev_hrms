@@ -221,14 +221,14 @@ export const EmployeesPage = () => {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1.5 text-slate-700">
-                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                      <span className={`inline-flex items-center gap-1.5 ${emp.department ? 'text-slate-700 font-medium' : 'text-slate-400 italic'}`}>
+                        <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         {emp.department || 'Sin asignar'}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1.5 text-slate-700">
-                        <Phone className="w-3.5 h-3.5 text-slate-400" />
+                      <span className={`inline-flex items-center gap-1.5 ${emp.phone ? 'text-slate-700 font-medium' : 'text-slate-400 italic'}`}>
+                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         {emp.phone || 'No registrado'}
                       </span>
                     </td>
@@ -237,7 +237,7 @@ export const EmployeesPage = () => {
                         {ROLE_LABELS[emp.role_id] || emp.role_name}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-500">
+                    <td className={`px-4 py-3 ${emp.hire_date ? 'text-slate-700 font-medium' : 'text-slate-400 italic'}`}>
                       {formatDate(emp.hire_date)}
                     </td>
                     <td className="px-4 py-3 text-right">

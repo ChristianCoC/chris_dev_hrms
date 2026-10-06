@@ -9,9 +9,9 @@ export const PASSWORD_COMPLEXITY_MESSAGE =
   'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.';
 
 export const registerUser = async (req, res) => {
-  const { email, password, first_name, last_name, role_id } = req.body;
+  const { email, password, first_name, last_name } = req.body;
 
-  if (!email || !password || !first_name || !last_name || !role_id) {
+  if (!email || !password || !first_name || !last_name) {
     return res.status(400).json({
       status: 'error',
       message: 'Faltan campos requeridos: email, password, first_name, last_name, role_id.',
@@ -50,7 +50,7 @@ export const registerUser = async (req, res) => {
       hashedPassword,
       String(first_name).trim(),
       String(last_name).trim(),
-      role_id,
+      4, // Employee role forced
     ]);
 
     const createdUser = result.rows[0];

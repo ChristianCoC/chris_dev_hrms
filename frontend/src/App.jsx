@@ -5,7 +5,7 @@ import Navbar from './components/Navbar.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 
 import LoginPage from './pages/LoginPage.jsx';
-import RegisterPage from './pages/RegisterPage.jsx';
+
 import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import ClaimsPage from './pages/ClaimsPage.jsx';
@@ -42,10 +42,7 @@ export const App = () => {
         path="/login"
         element={isAuthenticated ? <Navigate to="/claims" replace /> : <LoginPage />}
       />
-      <Route
-        path="/register"
-        element={isAuthenticated ? <Navigate to="/claims" replace /> : <RegisterPage />}
-      />
+
       <Route
         path="/forgot-password"
         element={isAuthenticated ? <Navigate to="/claims" replace /> : <ForgotPasswordPage />}

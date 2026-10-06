@@ -56,7 +56,7 @@ export const createClaim = async (req, res) => {
 
 export const resolveClaim = async (req, res) => {
   const { id } = req.params;
-  const { status, resolution_notes } = req.body;
+  const { status, resolution_notes, notes } = req.body;
   const assigned_to_id = req.user.id;
 
   const validStatuses = ["approved", "rejected", "in_progress"];
@@ -64,6 +64,14 @@ export const resolveClaim = async (req, res) => {
     return res.status(400).json({
       status: "error",
       message: `El estado es inválido y debe ser uno de los siguientes valores: ${validStatuses.join(", ")}.`,
+    });
+  }
+
+  const finalNotes = resolution_notes !== undefined ? resolution_notes : notes;
+  if (finalNotes && typeof finalNotes === "string" && finalNotes.length > 500) {
+    return res.status(400).json({
+      status: "error",
+      message: "Las notas no pueden superar los 500 caracteres.",
     });
   }
 
@@ -81,6 +89,13 @@ export const resolveClaim = async (req, res) => {
 
     const claimData = checkClaim.rows[0];
 
+    if (claimData.status === "approved" || claimData.status === "rejected") {
+      return res.status(403).json({
+        status: "error",
+        message: "El reclamo ya ha sido cerrado y no puede ser modificado.",
+      });
+    }
+
     const result = await query(
       `UPDATE claims 
         SET status = $1, 
@@ -89,7 +104,7 @@ export const resolveClaim = async (req, res) => {
         resolved_at = CURRENT_TIMESTAMP
         WHERE id = $4
         RETURNING id, title, status, resolution_notes, resolved_at, assigned_to_id;`,
-      [status, resolution_notes, assigned_to_id, id],
+      [status, finalNotes || null, assigned_to_id, id],
     );
 
     const notificationTitle = 'Actualización de Reclamo';
@@ -113,7 +128,7 @@ export const resolveClaim = async (req, res) => {
       },
       newValues: {
         status,
-        resolution_notes: resolution_notes || null,
+        resolution_notes: finalNotes || null,
       },
       ipAddress,
     });

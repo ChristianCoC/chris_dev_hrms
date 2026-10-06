@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { verifyToken } from "../middlewares/authMiddleware.js";
 import { authorizeRoles } from "../middlewares/roleMiddleware.js";
+import { createEmployee } from "../controllers/userController.js";
 import {
   getEmployees,
   getEmployeeStats,
@@ -15,6 +16,9 @@ router.get("/stats", verifyToken, authorizeRoles(1, 2), getEmployeeStats);
 
 // Listado de empleados con filtros (Admin y RRHH)
 router.get("/", verifyToken, authorizeRoles(1, 2), getEmployees);
+
+// Crear nuevo empleado (solo Administrador)
+router.post("/", verifyToken, authorizeRoles(1), createEmployee);
 
 // Detalle de un empleado (Admin, RRHH, o el propio empleado consultando su perfil)
 router.get("/:id", verifyToken, (req, res, next) => {

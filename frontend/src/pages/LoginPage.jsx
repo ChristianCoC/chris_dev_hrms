@@ -135,15 +135,7 @@ export const LoginPage = () => {
           </form>
 
           <div className="mt-6 pt-6 border-t border-slate-100 text-center">
-            <p className="text-xs text-slate-500">
-              ¿No tienes una cuenta aún?{' '}
-              <Link
-                to="/register"
-                className="font-semibold text-blue-600 hover:text-blue-700"
-              >
-                Regístrate aquí
-              </Link>
-            </p>
+
           </div>
         </div>
       </div>
