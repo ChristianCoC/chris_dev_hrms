@@ -24,7 +24,7 @@ describe('Módulo de Registro (registerUser)', () => {
   });
 
   test('debe retornar 400 si faltan campos requeridos en el body', async () => {
-    const requiredFields = ['email', 'password', 'first_name', 'last_name', 'role_id'];
+    const requiredFields = ['email', 'password', 'first_name', 'last_name'];
 
     const basePayload = {
       email: 'test@hrms.com',

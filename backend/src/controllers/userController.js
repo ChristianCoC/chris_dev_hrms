@@ -218,9 +218,9 @@ export const createEmployee = async (req, res) => {
     const activationToken = crypto.randomBytes(32).toString('hex');
 
     const insertQuery = `
-      INSERT INTO users (email, password, first_name, last_name, role_id, reset_token, reset_token_expires, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '48 hour', NOW(), NULL)
-      RETURNING id, email, first_name, last_name, role_id, created_at, updated_at;`;
+      INSERT INTO users (email, password, first_name, last_name, role_id, reset_token, reset_token_expires, is_active, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '48 hour', false, NOW(), NULL)
+      RETURNING id, email, first_name, last_name, role_id, is_active, created_at, updated_at;`;
 
     const result = await query(insertQuery, [
       normalizedEmail,
@@ -232,7 +232,7 @@ export const createEmployee = async (req, res) => {
     ]);
 
     const newUser = result.rows[0];
-    const { password: _pwd, ...safeUser } = newUser;
+    const { password: _pwd, reset_token: _token, ...safeUser } = newUser;
 
     // envío de email vía Ethereal
     let previewUrl = null;
@@ -294,9 +294,118 @@ export const createEmployee = async (req, res) => {
   }
 };
 
+/**
+ * Reenviar enlace de invitación/activación a un empleado pendiente.
+ * Exclusivo para administradores (role_id = 1).
+ */
+export const resendInvitation = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const userResult = await query(
+      "SELECT id, email, first_name, last_name, role_id, is_active FROM users WHERE id = $1",
+      [id]
+    );
+
+    if (userResult.rowCount === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Usuario no encontrado.",
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    // Si la cuenta ya está activa, bloquear
+    if (user.is_active === true) {
+      return res.status(400).json({
+        status: "error",
+        message: "La cuenta ya ha sido activada y no requiere reenvío de invitación.",
+      });
+    }
+
+    // Generar un nuevo token criptográfico seguro
+    const activationToken = crypto.randomBytes(32).toString("hex");
+
+    // Actualizar reset_token y expiración a 48 horas
+    await query(
+      "UPDATE users SET reset_token = $1, reset_token_expires = NOW() + INTERVAL '48 hour', updated_at = NOW() WHERE id = $2",
+      [activationToken, user.id]
+    );
+
+    // Enviar correo con Nodemailer / Ethereal
+    let previewUrl = null;
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const activationLink = `${frontendUrl}/activate?token=${activationToken}`;
+
+    try {
+      const testAccount = await nodemailer.createTestAccount();
+      const transporter = nodemailer.createTransport({
+        host: testAccount.smtp.host,
+        port: testAccount.smtp.port,
+        secure: testAccount.smtp.secure,
+        auth: { user: testAccount.user, pass: testAccount.pass },
+      });
+
+      const mailOptions = {
+        from: '"HRMS Soporte" <no-reply@devpro.com>',
+        to: user.email,
+        subject: "Reenvío de Invitación - Activa tu cuenta en HRMS",
+        text: `Hola ${user.first_name},\n\nSe ha emitido un nuevo enlace de activación para tu cuenta en HRMS (válido por 48 horas):\n${activationLink}\n\nSi no esperabas este correo, puedes ignorarlo.`,
+        html: `<div style="font-family:Arial,sans-serif;color:#0F172A;max-width:580px;margin:0 auto;padding:24px;border:1px solid #E2E8F0;border-radius:8px;">
+          <h2 style="color:#1D4ED8;margin-bottom:8px;">HRMS - Nuevo Enlace de Activación</h2>
+          <p>Hola <strong>${user.first_name}</strong>,</p>
+          <p>Un administrador ha solicitado el reenvío de tu invitación de acceso a HRMS. Haz clic en el botón a continuación para crear tu contraseña definitiva (enlace válido por 48 horas):</p>
+          <div style="margin:24px 0;text-align:center;">
+            <a href="${activationLink}" style="background:#1D4ED8;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;font-weight:bold;">Activar mi cuenta</a>
+          </div>
+          <p style="font-size:12px;color:#64748B;">Si el botón no funciona, copia y pega este enlace en tu navegador:<br><a href="${activationLink}" style="color:#1D4ED8;">${activationLink}</a></p>
+          <p style="color:#94A3B8;font-size:11px;margin-top:24px;border-top:1px solid #E2E8F0;padding-top:12px;">Este enlace expirará en 48 horas.</p>
+        </div>`,
+      };
+
+      const info = await transporter.sendMail(mailOptions);
+      previewUrl = nodemailer.getTestMessageUrl(info);
+      console.log(`✉️ Invitación reenviada a: ${user.email}`);
+      console.log(`🔗 Ethereal preview: ${previewUrl}`);
+    } catch (mailErr) {
+      console.error("⚠️ Error enviando correo de reenvío con Nodemailer:", mailErr.message);
+    }
+
+    // Auditoría
+    const ipAddress = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || null;
+    await logAuditEvent({
+      userId: req.user.id,
+      action: "INVITATION_RESENT_BY_ADMIN",
+      entityType: "users",
+      entityId: user.id,
+      newValues: {
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+      },
+      ipAddress,
+    });
+
+    return res.status(200).json({
+      status: "success",
+      message: "Invitación reenviada correctamente",
+      previewUrl,
+    });
+  } catch (error) {
+    console.error("❌ Error en resendInvitation:", error.message);
+    return res.status(500).json({
+      status: "error",
+      message: "Error interno al reenviar la invitación.",
+      error: error.message,
+    });
+  }
+};
+
 export default {
   getAllUsers,
   deleteUser,
   updateUser,
   createEmployee,
+  resendInvitation,
 };

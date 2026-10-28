@@ -218,7 +218,7 @@ export const resetPassword = async (req, res) => {
 
     // Actualizar contraseña y limpiar campos de reset
     await query(
-      'UPDATE users SET password = $1, reset_token = NULL, reset_token_expires = NULL, updated_at = NOW() WHERE id = $2',
+      'UPDATE users SET password = $1, reset_token = NULL, reset_token_expires = NULL, is_active = true, updated_at = NOW() WHERE id = $2',
       [hashedPassword, user.id]
     );
 
@@ -236,8 +236,65 @@ export const resetPassword = async (req, res) => {
   }
 };
 
+/**
+ * Activar cuenta de usuario invitado con token validado
+ */
+export const activateAccount = async (req, res) => {
+  const { token, password, new_password } = req.body;
+  const targetPassword = password || new_password;
+
+  if (!token || !targetPassword) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'El token y la nueva contraseña son requeridos.',
+    });
+  }
+
+  if (!PASSWORD_REGEX.test(targetPassword)) {
+    return res.status(400).json({
+      status: 'error',
+      message: PASSWORD_COMPLEXITY_MESSAGE,
+    });
+  }
+
+  try {
+    const userResult = await query(
+      'SELECT id, email FROM users WHERE reset_token = $1 AND reset_token_expires > NOW()',
+      [token]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'El enlace de activación es inválido o ha expirado. Por favor contacta al administrador.',
+      });
+    }
+
+    const user = userResult.rows[0];
+    const hashedPassword = await bcrypt.hash(targetPassword, 10);
+
+    await query(
+      'UPDATE users SET password = $1, reset_token = NULL, reset_token_expires = NULL, is_active = true, updated_at = NOW() WHERE id = $2',
+      [hashedPassword, user.id]
+    );
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'Cuenta activada correctamente. Ya puedes iniciar sesión con tu nueva contraseña.',
+    });
+  } catch (error) {
+    console.error('❌ Error en activateAccount:', error.message);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Error interno al activar la cuenta.',
+      error: error.message,
+    });
+  }
+};
+
 export default {
   registerUser,
   forgotPassword,
   resetPassword,
+  activateAccount,
 };

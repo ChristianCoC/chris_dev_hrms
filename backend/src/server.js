@@ -123,7 +123,13 @@ app.use((err, req, res, next) => {
 /**
  * Iniciar servidor
  */
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
+  try {
+    await testConnection();
+  } catch (dbErr) {
+    console.error('⚠️ Advertencia al verificar base de datos al inicio:', dbErr.message);
+  }
+
   console.log(`
   
     🚀 HRMS Server iniciado correctamente                    

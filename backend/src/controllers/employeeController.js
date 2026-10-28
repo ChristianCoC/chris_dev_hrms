@@ -12,7 +12,7 @@ export const getEmployees = async (req, res) => {
     const values = [];
     let paramIndex = 1;
 
-    if (search) {
+    if (search && search.trim()) {
       conditions.push(
         `(u.first_name ILIKE $${paramIndex} OR u.last_name ILIKE $${paramIndex} OR u.email ILIKE $${paramIndex})`
       );
@@ -20,13 +20,13 @@ export const getEmployees = async (req, res) => {
       paramIndex++;
     }
 
-    if (department) {
+    if (department && department.trim()) {
       conditions.push(`u.department ILIKE $${paramIndex}`);
       values.push(`%${department.trim()}%`);
       paramIndex++;
     }
 
-    if (role_id) {
+    if (role_id && role_id !== "" && !isNaN(parseInt(role_id, 10))) {
       conditions.push(`u.role_id = $${paramIndex}`);
       values.push(parseInt(role_id, 10));
       paramIndex++;
@@ -44,6 +44,7 @@ export const getEmployees = async (req, res) => {
         u.department,
         u.hire_date,
         u.role_id,
+        COALESCE(u.is_active, false) AS is_active,
         r.name AS role_name,
         r.level AS role_level,
         u.created_at,
@@ -62,6 +63,7 @@ export const getEmployees = async (req, res) => {
       data: {
         employees: result.rows,
       },
+      employees: result.rows,
     });
   } catch (error) {
     console.error("❌ Error al obtener empleados:", error.message);
@@ -142,6 +144,7 @@ export const getEmployeeById = async (req, res) => {
         u.department,
         u.hire_date,
         u.role_id,
+        COALESCE(u.is_active, false) AS is_active,
         r.name AS role_name,
         r.level AS role_level,
         u.created_at,

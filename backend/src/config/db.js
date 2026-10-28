@@ -88,6 +88,7 @@ export const testConnection = async () => {
   try {
     const result = await pool.query('SELECT NOW() as server_time, version()');
     console.log('✅ Conexión a PostgreSQL exitosa:', result.rows[0].version);
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT false');
     return true;
   } catch (error) {
     console.error('❌ Error al conectar a PostgreSQL:', error.message);

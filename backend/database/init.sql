@@ -17,6 +17,7 @@ CREATE TABLE users (
   role_id INT NOT NULL REFERENCES roles(id),
   reset_token VARCHAR(255),
   reset_token_expires TIMESTAMP,
+  is_active BOOLEAN DEFAULT false,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP
 );
