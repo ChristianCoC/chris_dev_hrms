@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Building2, Phone, Calendar, Shield, Edit3, X, CheckCircle2, UserPlus, Mail, AlertCircle, ExternalLink } from 'lucide-react';
+import { Users, Search, Building2, Phone, Calendar, Shield, Edit3, X, CheckCircle2, UserPlus, Mail, AlertCircle, ExternalLink, UserX } from 'lucide-react';
 import api from '../api/client.js';
 import { useAuth, ROLE_LABELS } from '../context/AuthContext.jsx';
 
 export const EmployeesPage = () => {
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [employees, setEmployees] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -22,6 +22,8 @@ export const EmployeesPage = () => {
     last_name: '',
     email: '',
     role_id: 4,
+    document_number: '',
+    file_number: '',
   });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
@@ -32,6 +34,8 @@ export const EmployeesPage = () => {
   const [editForm, setEditForm] = useState({
     first_name: '',
     last_name: '',
+    document_number: '',
+    file_number: '',
     phone: '',
     department: '',
     hire_date: '',
@@ -43,6 +47,11 @@ export const EmployeesPage = () => {
   // Modal persistente de reenvío de invitación
   const [resendResultModal, setResendResultModal] = useState(null);
   const [resendingId, setResendingId] = useState(null);
+
+  // Modal de confirmación de baja lógica (desactivación)
+  const [employeeToDeactivate, setEmployeeToDeactivate] = useState(null);
+  const [deactivating, setDeactivating] = useState(false);
+  const [deactivateError, setDeactivateError] = useState('');
 
   const fetchEmployeesAndStats = async () => {
     try {
@@ -83,6 +92,8 @@ export const EmployeesPage = () => {
         last_name: createForm.last_name.trim(),
         email: createForm.email.trim(),
         role_id: Number(createForm.role_id),
+        document_number: createForm.document_number ? createForm.document_number.trim() : null,
+        file_number: createForm.file_number ? createForm.file_number.trim() : null,
       });
 
       setIsCreateModalOpen(false);
@@ -91,6 +102,8 @@ export const EmployeesPage = () => {
         last_name: '',
         email: '',
         role_id: 4,
+        document_number: '',
+        file_number: '',
       });
 
       const msg = res.message || 'Empleado dado de alta e invitación enviada exitosamente.';
@@ -127,11 +140,33 @@ export const EmployeesPage = () => {
     }
   };
 
+  const handleConfirmDeactivate = async () => {
+    if (!employeeToDeactivate) return;
+    setDeactivateError('');
+
+    try {
+      setDeactivating(true);
+      const res = await api.patch(`/api/employees/${employeeToDeactivate.id}/deactivate`);
+      setSuccessMessage(res.message || `El colaborador ${employeeToDeactivate.first_name} ${employeeToDeactivate.last_name} fue dado de baja correctamente.`);
+      setEmployeeToDeactivate(null);
+      setTimeout(() => {
+        setSuccessMessage('');
+      }, 5000);
+      await fetchEmployeesAndStats();
+    } catch (err) {
+      setDeactivateError(err.message || 'Error al procesar la baja del empleado.');
+    } finally {
+      setDeactivating(false);
+    }
+  };
+
   const handleOpenEdit = (employee) => {
     setEditingEmployee(employee);
     setEditForm({
       first_name: employee.first_name || '',
       last_name: employee.last_name || '',
+      document_number: employee.document_number || '',
+      file_number: employee.file_number || '',
       phone: employee.phone || '',
       department: employee.department || '',
       hire_date: employee.hire_date ? employee.hire_date.substring(0, 10) : '',
@@ -265,7 +300,7 @@ export const EmployeesPage = () => {
         <div className="flex-1 relative">
           <input
             type="text"
-            placeholder="Buscar por nombre, apellido o correo..."
+            placeholder="Buscar por nombre, apellido, correo, DNI o legajo..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full px-3 py-2 pl-9 rounded-lg border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 placeholder:text-slate-400"
@@ -336,6 +371,25 @@ export const EmployeesPage = () => {
                       <div className="text-[11px] text-slate-400 font-normal">
                         {emp.email}
                       </div>
+                      <div className="text-[11px] mt-1 flex flex-wrap items-center gap-x-2 text-slate-500 font-normal">
+                        <span>
+                          <span className="font-semibold text-slate-600">Legajo:</span>{' '}
+                          {emp.file_number ? (
+                            <span className="text-slate-700 font-medium">#{emp.file_number}</span>
+                          ) : (
+                            <span className="text-slate-400 italic">Sin registrar</span>
+                          )}
+                        </span>
+                        <span className="text-slate-300">•</span>
+                        <span>
+                          <span className="font-semibold text-slate-600">DNI:</span>{' '}
+                          {emp.document_number ? (
+                            <span className="text-slate-700 font-medium">{emp.document_number}</span>
+                          ) : (
+                            <span className="text-slate-400 italic">Sin registrar</span>
+                          )}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1.5 ${emp.department ? 'text-slate-700 font-medium' : 'text-slate-400 italic'}`}>
@@ -360,6 +414,11 @@ export const EmployeesPage = () => {
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                           Activo
                         </span>
+                      ) : emp.deactivation_date || !emp.is_pending_activation ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                          Inactivo / Baja
+                        </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
@@ -372,7 +431,7 @@ export const EmployeesPage = () => {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex items-center justify-end gap-1.5">
-                        {isAdmin && !emp.is_active && (
+                        {isAdmin && !emp.is_active && emp.is_pending_activation && (
                           <button
                             type="button"
                             onClick={() => handleResendInvitation(emp)}
@@ -392,6 +451,20 @@ export const EmployeesPage = () => {
                           <Edit3 className="w-3.5 h-3.5" />
                           <span>Editar</span>
                         </button>
+                        {isAdmin && emp.is_active && emp.id !== user?.id && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeactivateError('');
+                              setEmployeeToDeactivate(emp);
+                            }}
+                            title="Dar de baja colaborador"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-md transition-colors"
+                          >
+                            <UserX className="w-3.5 h-3.5" />
+                            <span>Baja</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -440,6 +513,29 @@ export const EmployeesPage = () => {
                     value={editForm.last_name}
                     onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
                     required
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Documento (DNI/Cédula)</label>
+                  <input
+                    type="text"
+                    placeholder="Ej: 38123456"
+                    value={editForm.document_number}
+                    onChange={(e) => setEditForm({ ...editForm, document_number: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Número de Legajo</label>
+                  <input
+                    type="text"
+                    placeholder="Ej: 1042"
+                    value={editForm.file_number}
+                    onChange={(e) => setEditForm({ ...editForm, file_number: e.target.value })}
                     className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
                   />
                 </div>
@@ -571,6 +667,33 @@ export const EmployeesPage = () => {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Número de Documento <span className="font-normal text-slate-400">(opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: 38123456"
+                    value={createForm.document_number}
+                    onChange={(e) => setCreateForm({ ...createForm, document_number: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Número de Legajo <span className="font-normal text-slate-400">(opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: 1042"
+                    value={createForm.file_number}
+                    onChange={(e) => setCreateForm({ ...createForm, file_number: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Correo Electrónico</label>
                 <div className="relative">
@@ -686,6 +809,73 @@ export const EmployeesPage = () => {
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirmar Baja de Empleado */}
+      {employeeToDeactivate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 border border-slate-200 shadow-2xl relative">
+            <button
+              onClick={() => {
+                if (!deactivating) setEmployeeToDeactivate(null);
+              }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 disabled:opacity-50"
+              disabled={deactivating}
+              aria-label="Cerrar modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <UserX className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Confirmar Baja de Empleado
+                </h3>
+                <span className="text-[11px] text-slate-400 font-medium">
+                  Desactivación lógica de colaborador
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+              ¿Estás seguro de que deseas dar de baja a{' '}
+              <strong className="text-slate-900">
+                {employeeToDeactivate.first_name} {employeeToDeactivate.last_name}
+              </strong>
+              ? El usuario perderá el acceso al sistema inmediatamente pero se preservará su historial.
+            </p>
+
+            {deactivateError && (
+              <div className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span>{deactivateError}</span>
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setEmployeeToDeactivate(null)}
+                disabled={deactivating}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeactivate}
+                disabled={deactivating}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors disabled:opacity-50"
+              >
+                <UserX className="w-3.5 h-3.5" />
+                <span>{deactivating ? 'Procesando...' : 'Confirmar Baja'}</span>
               </button>
             </div>
           </div>

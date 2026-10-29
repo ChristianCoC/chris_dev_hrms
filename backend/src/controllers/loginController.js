@@ -31,7 +31,7 @@ export const loginUser = async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
 
     const result = await query(
-      'SELECT id, email, password, role_id, first_name, last_name FROM users WHERE email = $1',
+      'SELECT id, email, password, role_id, first_name, last_name, is_active, deactivation_date, reset_token FROM users WHERE email = $1',
       [normalizedEmail]
     );
 
@@ -49,6 +49,15 @@ export const loginUser = async (req, res) => {
       return res.status(401).json({
         status: 'error',
         message: 'Credenciales inválidas.',
+      });
+    }
+
+    // Bloquear inicio de sesión si la cuenta ha sido dada de baja (is_active === false y no es pendiente de activación inicial)
+    const isPendingActivation = user.is_active === false && user.reset_token != null && user.deactivation_date == null;
+    if (user.is_active === false && !isPendingActivation) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Tu cuenta ha sido desactivada o dada de baja. Comunícate con el administrador.',
       });
     }
 

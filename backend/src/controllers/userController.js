@@ -182,7 +182,7 @@ export const updateUser = async (req, res) => {
  * Genera contraseña temporal, token de activación (48h) y envía email vía Ethereal.
  */
 export const createEmployee = async (req, res) => {
-  const { email, first_name, last_name, role_id } = req.body;
+  const { email, first_name, last_name, role_id, document_number, file_number } = req.body;
 
   if (!email || !first_name || !last_name || !role_id) {
     return res.status(400).json({
@@ -210,6 +210,29 @@ export const createEmployee = async (req, res) => {
       });
     }
 
+    const cleanDoc = document_number && String(document_number).trim() ? String(document_number).trim() : null;
+    const cleanFile = file_number && String(file_number).trim() ? String(file_number).trim() : null;
+
+    if (cleanDoc) {
+      const existingDoc = await query('SELECT id FROM users WHERE document_number = $1', [cleanDoc]);
+      if (existingDoc.rowCount > 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "El número de documento ya está registrado en el sistema.",
+        });
+      }
+    }
+
+    if (cleanFile) {
+      const existingFile = await query('SELECT id FROM users WHERE file_number = $1', [cleanFile]);
+      if (existingFile.rowCount > 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "El número de legajo ya está registrado en el sistema.",
+        });
+      }
+    }
+
     // generar contraseña temporal aleatoria
     const tempPassword = crypto.randomBytes(12).toString('hex');
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
@@ -218,9 +241,9 @@ export const createEmployee = async (req, res) => {
     const activationToken = crypto.randomBytes(32).toString('hex');
 
     const insertQuery = `
-      INSERT INTO users (email, password, first_name, last_name, role_id, reset_token, reset_token_expires, is_active, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '48 hour', false, NOW(), NULL)
-      RETURNING id, email, first_name, last_name, role_id, is_active, created_at, updated_at;`;
+      INSERT INTO users (email, password, first_name, last_name, role_id, document_number, file_number, reset_token, reset_token_expires, is_active, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + INTERVAL '48 hour', false, NOW(), NULL)
+      RETURNING id, email, first_name, last_name, role_id, document_number, file_number, is_active, created_at, updated_at;`;
 
     const result = await query(insertQuery, [
       normalizedEmail,
@@ -228,6 +251,8 @@ export const createEmployee = async (req, res) => {
       String(first_name).trim(),
       String(last_name).trim(),
       Number(role_id),
+      cleanDoc,
+      cleanFile,
       activationToken,
     ]);
 
@@ -274,7 +299,14 @@ export const createEmployee = async (req, res) => {
       action: 'USER_CREATED_BY_ADMIN',
       entityType: 'users',
       entityId: newUser.id,
-      newValues: { email: newUser.email, first_name: newUser.first_name, last_name: newUser.last_name, role_id: newUser.role_id },
+      newValues: {
+        email: newUser.email,
+        first_name: newUser.first_name,
+        last_name: newUser.last_name,
+        role_id: newUser.role_id,
+        document_number: newUser.document_number,
+        file_number: newUser.file_number,
+      },
       ipAddress,
     });
 

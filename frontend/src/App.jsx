@@ -10,6 +10,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import ActivateAccountPage from './pages/ActivateAccountPage.jsx';
 import ClaimsPage from './pages/ClaimsPage.jsx';
+import RequestsPage from './pages/RequestsPage.jsx';
 import EmployeesPage from './pages/EmployeesPage.jsx';
 import AuditLogsPage from './pages/AuditLogsPage.jsx';
 
@@ -64,6 +65,14 @@ export const App = () => {
           element={
             <AppLayout>
               <ClaimsPage />
+            </AppLayout>
+          }
+        />
+        <Route
+          path="/solicitudes"
+          element={
+            <AppLayout>
+              <RequestsPage />
             </AppLayout>
           }
         />

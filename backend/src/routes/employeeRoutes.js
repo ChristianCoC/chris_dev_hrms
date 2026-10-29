@@ -7,6 +7,7 @@ import {
   getEmployeeStats,
   getEmployeeById,
   updateEmployeeHR,
+  deactivateEmployee,
 } from "../controllers/employeeController.js";
 
 const router = Router();
@@ -22,6 +23,9 @@ router.post("/", verifyToken, authorizeRoles(1), createEmployee);
 
 // Reenviar invitación de activación (solo Administrador)
 router.post("/:id/resend-invitation", verifyToken, authorizeRoles(1), resendInvitation);
+
+// Baja lógica / desactivación de empleado (solo Administrador)
+router.patch("/:id/deactivate", verifyToken, authorizeRoles(1), deactivateEmployee);
 
 // Detalle de un empleado (Admin, RRHH, o el propio empleado consultando su perfil)
 router.get("/:id", verifyToken, (req, res, next) => {

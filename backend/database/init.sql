@@ -15,9 +15,12 @@ CREATE TABLE users (
   department VARCHAR(100),
   hire_date DATE,
   role_id INT NOT NULL REFERENCES roles(id),
+  document_number VARCHAR(30) UNIQUE,
+  file_number VARCHAR(30) UNIQUE,
   reset_token VARCHAR(255),
   reset_token_expires TIMESTAMP,
   is_active BOOLEAN DEFAULT false,
+  deactivation_date TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP
 );
@@ -44,6 +47,19 @@ CREATE TABLE notifications (
   is_read BOOLEAN DEFAULT false,
   related_claim_id UUID REFERENCES claims(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE requests (
+  id SERIAL PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type VARCHAR(50) NOT NULL, -- 'indumentaria', 'licencia', 'materiales', 'herramientas', 'otro'
+  title VARCHAR(150) NOT NULL,
+  description TEXT NOT NULL,
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  resolution_notes VARCHAR(500),
+  resolved_by UUID REFERENCES users(id),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE audit_logs (

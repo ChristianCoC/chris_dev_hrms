@@ -130,4 +130,68 @@ describe('Módulo de Invitaciones y Empleados (userController)', () => {
 
     mock.reset();
   });
+
+  test('createEmployee debe rechazar con 400 si el document_number ya existe', async () => {
+    mock.method(pool, 'query', async (sql) => {
+      if (typeof sql === 'string' && sql.includes('SELECT id FROM users WHERE email')) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (typeof sql === 'string' && sql.includes('SELECT id FROM users WHERE document_number')) {
+        return { rows: [{ id: 'existing-id' }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const req = {
+      body: {
+        email: 'nuevo@hrms.com',
+        first_name: 'Lucía',
+        last_name: 'Paz',
+        role_id: 4,
+        document_number: '38123456',
+      },
+      user: { id: 'admin-uuid', role_id: 1 },
+      headers: {},
+    };
+    const res = createMockRes();
+
+    await createEmployee(req, res);
+
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.message, /El número de documento ya está registrado/i);
+
+    mock.reset();
+  });
+
+  test('createEmployee debe rechazar con 400 si el file_number ya existe', async () => {
+    mock.method(pool, 'query', async (sql) => {
+      if (typeof sql === 'string' && sql.includes('SELECT id FROM users WHERE email')) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (typeof sql === 'string' && sql.includes('SELECT id FROM users WHERE file_number')) {
+        return { rows: [{ id: 'existing-id' }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const req = {
+      body: {
+        email: 'nuevo2@hrms.com',
+        first_name: 'Lucía',
+        last_name: 'Paz',
+        role_id: 4,
+        file_number: '1042',
+      },
+      user: { id: 'admin-uuid', role_id: 1 },
+      headers: {},
+    };
+    const res = createMockRes();
+
+    await createEmployee(req, res);
+
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.message, /El número de legajo ya está registrado/i);
+
+    mock.reset();
+  });
 });

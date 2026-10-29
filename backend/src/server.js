@@ -8,6 +8,7 @@ import claimRoutes from './routes/claimRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import employeeRoutes from './routes/employeeRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
+import requestRoutes from './routes/requestRoutes.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -92,6 +93,7 @@ app.use('/api/users', userRoutes);
 
 app.use('/api/employees', employeeRoutes);
 app.use('/api/claims', claimRoutes);
+app.use('/api/requests', requestRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/audit-logs', auditRoutes);
 

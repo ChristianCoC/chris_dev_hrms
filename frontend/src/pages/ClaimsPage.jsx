@@ -442,7 +442,7 @@ export const ClaimsPage = () => {
             <form onSubmit={handleCreateClaim} className="mt-4 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Título de la solicitud
+                  Título del reclamo
                 </label>
                 <input
                   type="text"

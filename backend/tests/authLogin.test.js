@@ -146,6 +146,41 @@ describe('Módulo de Inicio de Sesión (loginUser)', () => {
     assert.equal(res.body.user.password, undefined);
   });
 
+  test('debe rechazar con 403 si el usuario ha sido dado de baja (is_active === false)', async () => {
+    const rawPassword = 'CorrectPassword123';
+    const passwordHash = await bcrypt.hash(rawPassword, 10);
+
+    mock.method(pool, 'query', async () => {
+      return {
+        rows: [
+          {
+            id: 'uuid-user-inactive',
+            email: 'desactivado@hrms.com',
+            password: passwordHash,
+            role_id: 4,
+            first_name: 'Marcos',
+            last_name: 'Paz',
+            is_active: false,
+            deactivation_date: new Date(),
+            reset_token: null,
+          },
+        ],
+        rowCount: 1,
+      };
+    });
+
+    const req = { body: { email: 'desactivado@hrms.com', password: rawPassword } };
+    const res = createMockRes();
+
+    await loginUser(req, res);
+
+    mock.reset();
+
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.body.status, 'error');
+    assert.match(res.body.message, /Tu cuenta ha sido desactivada o dada de baja/i);
+  });
+
   test('debe retornar 500 si la base de datos lanza un error', async () => {
     mock.method(pool, 'query', async () => {
       throw new Error('Connection timeout');

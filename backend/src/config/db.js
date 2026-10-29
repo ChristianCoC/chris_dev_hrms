@@ -89,6 +89,23 @@ export const testConnection = async () => {
     const result = await pool.query('SELECT NOW() as server_time, version()');
     console.log('✅ Conexión a PostgreSQL exitosa:', result.rows[0].version);
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT false');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS document_number VARCHAR(30)');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS file_number VARCHAR(30)');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS deactivation_date TIMESTAMP NULL');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS requests (
+        id SERIAL PRIMARY KEY,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL,
+        title VARCHAR(150) NOT NULL,
+        description TEXT NOT NULL,
+        status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+        resolution_notes VARCHAR(500),
+        resolved_by UUID REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
     return true;
   } catch (error) {
     console.error('❌ Error al conectar a PostgreSQL:', error.message);
