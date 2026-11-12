@@ -56,7 +56,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const register = async (payload) => {
-    return await api.post('/api/auth/register', payload);
+    return await authService.register(payload);
   };
 
   const logout = () => {

@@ -88,10 +88,21 @@ export const testConnection = async () => {
   try {
     const result = await pool.query('SELECT NOW() as server_time, version()');
     console.log('✅ Conexión a PostgreSQL exitosa:', result.rows[0].version);
+    await pool.query(`
+      INSERT INTO roles (id, name, description, level) VALUES
+        (1, 'Administrador', 'Control total y administración del sistema HRMS', 1),
+        (2, 'Recursos Humanos', 'Gestión de personal, reclamos, solicitudes y comunicados', 2),
+        (3, 'Líder de Área', 'Gestión de equipo y solicitudes departamentales', 3),
+        (4, 'Empleado', 'Colaborador estándar con acceso a solicitudes y reclamos personales', 4)
+      ON CONFLICT (id) DO NOTHING
+    `);
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT false');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS document_number VARCHAR(30)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS file_number VARCHAR(30)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS deactivation_date TIMESTAMP NULL');
+    await pool.query('ALTER TABLE notifications ADD COLUMN IF NOT EXISTS title VARCHAR(150)');
+    await pool.query("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT 'system'");
+    await pool.query('ALTER TABLE notifications ADD COLUMN IF NOT EXISTS sender_id UUID REFERENCES users(id) ON DELETE SET NULL');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS requests (
         id SERIAL PRIMARY KEY,

@@ -5,6 +5,13 @@ CREATE TABLE roles (
   level INT NOT NULL
 );
 
+INSERT INTO roles (id, name, description, level) VALUES
+  (1, 'Administrador', 'Control total y administración del sistema HRMS', 1),
+  (2, 'Recursos Humanos', 'Gestión de personal, reclamos, solicitudes y comunicados', 2),
+  (3, 'Líder de Área', 'Gestión de equipo y solicitudes departamentales', 3),
+  (4, 'Empleado', 'Colaborador estándar con acceso a solicitudes y reclamos personales', 4)
+ON CONFLICT (id) DO NOTHING;
+
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email VARCHAR(255) UNIQUE NOT NULL,
@@ -42,8 +49,9 @@ CREATE TABLE notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title VARCHAR(200) NOT NULL,
   message TEXT NOT NULL,
-  type VARCHAR(50) NOT NULL,
+  type VARCHAR(50) NOT NULL DEFAULT 'system',
   user_id UUID NOT NULL REFERENCES users(id),
+  sender_id UUID REFERENCES users(id) ON DELETE SET NULL,
   is_read BOOLEAN DEFAULT false,
   related_claim_id UUID REFERENCES claims(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

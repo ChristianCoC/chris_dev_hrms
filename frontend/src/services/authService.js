@@ -24,6 +24,11 @@ export const authService = {
     api.post('/api/auth/forgot-password', { email }),
 
   /**
+   * Registro de usuario (en desuso / legado).
+   */
+  register: (payload) => api.post('/api/auth/register', payload),
+
+  /**
    * Restablece la contraseña mediante un token de recuperación válido.
    */
   resetPassword: (token, password) =>

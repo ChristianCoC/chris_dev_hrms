@@ -10,7 +10,7 @@ import { X } from 'lucide-react';
  * @param {Function} props.onClose - Función invocada al solicitar el cierre
  * @param {string|React.ReactNode} [props.title] - Título del modal
  * @param {string|React.ReactNode} [props.subtitle] - Subtítulo o descripción secundaria
- * @param {React.ReactNode} [props.icon] - Ícono representativo en la cabecera
+ * @param {React.ComponentType<{ className?: string }>|React.ReactNode} [props.icon] - Ícono representativo en la cabecera
  * @param {string} [props.maxWidth='max-w-md'] - Ancho máximo Tailwind (ej: 'max-w-md', 'max-w-lg', 'max-w-xl')
  * @param {boolean} [props.preventClose=false] - Deshabilita el cierre si hay una acción en curso
  * @param {React.ReactNode} props.children - Contenido del cuerpo del modal
@@ -20,7 +20,7 @@ export const Modal = ({
   onClose,
   title,
   subtitle,
-  icon,
+  icon: Icon,
   maxWidth = 'max-w-md',
   preventClose = false,
   children,
@@ -40,6 +40,17 @@ export const Modal = ({
 
   if (!isOpen) return null;
 
+  const renderIcon = () => {
+    if (!Icon) return null;
+    if (React.isValidElement(Icon)) return Icon;
+    const IconComponent = Icon;
+    return (
+      <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+        <IconComponent className="w-5 h-5" />
+      </div>
+    );
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs"
@@ -52,7 +63,7 @@ export const Modal = ({
       aria-modal="true"
     >
       <div
-        className={`bg-white rounded-xl ${maxWidth} w-full p-6 border border-slate-200 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150`}
+        className={`bg-white text-slate-900 rounded-xl ${maxWidth} w-full p-6 border border-slate-200 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150`}
       >
         {!preventClose && (
           <button
@@ -65,9 +76,9 @@ export const Modal = ({
           </button>
         )}
 
-        {(title || icon) && (
+        {(title || Icon) && (
           <div className="flex items-center gap-3 mb-3">
-            {icon && <div className="shrink-0">{icon}</div>}
+            {renderIcon()}
             <div className="pr-6">
               {title && (
                 <h3 className="text-base font-bold text-slate-900 tracking-tight">
@@ -83,7 +94,7 @@ export const Modal = ({
           </div>
         )}
 
-        <div>{children}</div>
+        {children}
       </div>
     </div>
   );
