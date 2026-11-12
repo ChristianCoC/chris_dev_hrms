@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ClipboardList,
   Plus,
@@ -7,6 +7,9 @@ import {
   XCircle,
   AlertCircle,
   FileText,
+  Paperclip,
+  Upload,
+  X,
 } from 'lucide-react';
 import { requestService } from '../services/requestService.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -29,6 +32,13 @@ const REQUEST_TYPE_STYLES = {
   herramientas: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   otro: 'bg-slate-100 text-slate-700 border-slate-200',
 };
+
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+];
 
 export const RequestsPage = () => {
   const { isAdminOrHR } = useAuth();
@@ -53,8 +63,11 @@ export const RequestsPage = () => {
     title: '',
     description: '',
   });
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileError, setFileError] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+  const fileInputRef = useRef(null);
 
   // Modal: Revisar Solicitud (Admin / RRHH)
   const [requestToReview, setRequestToReview] = useState(null);
@@ -62,6 +75,9 @@ export const RequestsPage = () => {
   const [resolutionNotes, setResolutionNotes] = useState('');
   const [resolving, setResolving] = useState(false);
   const [reviewError, setReviewError] = useState('');
+
+  // Estado de descarga de archivos adjuntos
+  const [downloadingId, setDownloadingId] = useState(null);
 
   const fetchRequests = async () => {
     try {
@@ -92,6 +108,38 @@ export const RequestsPage = () => {
     fetchRequests();
   }, [activeTab, search, typeFilter, statusFilter]);
 
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    setFileError('');
+
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+      setFileError('Formato no permitido. Solo se aceptan PDF, JPG, PNG o WebP.');
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setFileError('El archivo seleccionado supera el límite de 5 MB.');
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    setSelectedFile(file);
+  };
+
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    setFileError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleCreateRequest = async (e) => {
     e.preventDefault();
     setCreateError('');
@@ -107,11 +155,22 @@ export const RequestsPage = () => {
 
     try {
       setCreating(true);
-      await requestService.create({
-        type: createForm.type,
-        title: createForm.title.trim(),
-        description: createForm.description.trim(),
-      });
+
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append('type', createForm.type);
+        formData.append('title', createForm.title.trim());
+        formData.append('description', createForm.description.trim());
+        formData.append('attachment', selectedFile);
+
+        await requestService.create(formData);
+      } else {
+        await requestService.create({
+          type: createForm.type,
+          title: createForm.title.trim(),
+          description: createForm.description.trim(),
+        });
+      }
 
       setIsCreateModalOpen(false);
       setCreateForm({
@@ -119,6 +178,9 @@ export const RequestsPage = () => {
         title: '',
         description: '',
       });
+      setSelectedFile(null);
+      setFileError('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
 
       setFeedbackMessage('Solicitud registrada correctamente.');
       setTimeout(() => setFeedbackMessage(''), 4000);
@@ -162,6 +224,18 @@ export const RequestsPage = () => {
     }
   };
 
+  const handleDownloadAttachment = async (requestId, fileName, e) => {
+    if (e) e.stopPropagation();
+    try {
+      setDownloadingId(requestId);
+      await requestService.downloadAttachment(requestId, fileName);
+    } catch (err) {
+      alert(err.message || 'Error al descargar el archivo adjunto.');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   const formatDate = (isoDate) => {
     if (!isoDate) return 'Sin fecha';
     const date = new Date(isoDate);
@@ -190,22 +264,22 @@ export const RequestsPage = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Encabezado y Acción Primaria */}
+      {/* Encabezado */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2.5">
-            <ClipboardList className="w-6 h-6 text-indigo-600" />
-            <span>Módulo de Solicitudes</span>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Módulo de Solicitudes Operativas
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Gestión y seguimiento de requerimientos operativos: indumentaria, licencias, materiales y herramientas
+            Gestión interna de indumentaria, licencias, materiales, herramientas y servicios
           </p>
         </div>
 
         <button
-          type="button"
           onClick={() => {
             setCreateError('');
+            setFileError('');
+            setSelectedFile(null);
             setIsCreateModalOpen(true);
           }}
           className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors self-start sm:self-auto"
@@ -215,38 +289,37 @@ export const RequestsPage = () => {
         </button>
       </div>
 
-      {/* Retroalimentación de Éxito */}
       {feedbackMessage && (
-        <div className="mb-4 p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2">
+        <div className="mb-6 p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2 font-medium">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span className="font-medium">{feedbackMessage}</span>
+          <span>{feedbackMessage}</span>
         </div>
       )}
 
-      {/* Tabs (Para Administradores y RRHH) */}
+      {/* Selector de Pestañas (Solo Admin y RRHH) */}
       {isAdminOrHR && (
-        <div className="flex border-b border-slate-200 mb-6">
+        <div className="flex border-b border-slate-200 mb-6 gap-6 text-xs">
           <button
             type="button"
             onClick={() => setActiveTab('all')}
-            className={`py-2.5 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+            className={`pb-3 font-semibold transition-colors relative ${
               activeTab === 'all'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                ? 'text-indigo-600 border-b-2 border-indigo-600'
+                : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <span>Todas las Solicitudes de la Empresa</span>
+            Todas las Solicitudes
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('my')}
-            className={`py-2.5 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+            className={`pb-3 font-semibold transition-colors relative ${
               activeTab === 'my'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                ? 'text-indigo-600 border-b-2 border-indigo-600'
+                : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <span>Mis Solicitudes</span>
+            Mis Solicitudes
           </button>
         </div>
       )}
@@ -265,7 +338,7 @@ export const RequestsPage = () => {
               }
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-600 focus:outline-none placeholder:text-slate-400"
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-indigo-600 focus:outline-none placeholder:text-slate-400"
             />
           </div>
 
@@ -273,7 +346,7 @@ export const RequestsPage = () => {
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+              className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-800 bg-white focus:ring-2 focus:ring-indigo-600 focus:outline-none"
             >
               <option value="all">Todos los tipos de solicitud</option>
               <option value="indumentaria">Indumentaria</option>
@@ -288,7 +361,7 @@ export const RequestsPage = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+              className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-800 bg-white focus:ring-2 focus:ring-indigo-600 focus:outline-none"
             >
               <option value="all">Todos los estados</option>
               <option value="pending">Pendientes</option>
@@ -322,6 +395,7 @@ export const RequestsPage = () => {
                 <tr>
                   <th className="px-4 py-3">Tipo</th>
                   <th className="px-4 py-3">Título y Detalle</th>
+                  <th className="px-4 py-3">Adjunto</th>
                   {isAdminOrHR && activeTab === 'all' && (
                     <>
                       <th className="px-4 py-3">Solicitante</th>
@@ -358,6 +432,28 @@ export const RequestsPage = () => {
                       <div className="text-[11px] text-slate-500 line-clamp-2 mt-0.5 leading-relaxed">
                         {req.description}
                       </div>
+                    </td>
+
+                    {/* Adjunto */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {req.attachment_name ? (
+                        <button
+                          type="button"
+                          onClick={(e) =>
+                            handleDownloadAttachment(req.id, req.attachment_name, e)
+                          }
+                          disabled={downloadingId === req.id}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md transition-colors"
+                          title={`Descargar ${req.attachment_name}`}
+                        >
+                          <Paperclip className="w-3 h-3 text-indigo-600 shrink-0" />
+                          <span className="truncate max-w-[130px]">
+                            {downloadingId === req.id ? 'Descargando...' : req.attachment_name}
+                          </span>
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 italic">Sin adjunto</span>
+                      )}
                     </td>
 
                     {/* Solicitante (si activeTab === 'all') */}
@@ -443,14 +539,17 @@ export const RequestsPage = () => {
       {/* Modal: Nueva Solicitud */}
       <Modal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => {
+          if (!creating) {
+            setIsCreateModalOpen(false);
+            setCreateError('');
+            setFileError('');
+          }
+        }}
         title="Registrar Nueva Solicitud"
         subtitle="Petición operativa dirigida a Administración y RRHH"
-        icon={
-          <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-            <ClipboardList className="w-5 h-5" />
-          </div>
-        }
+        icon={ClipboardList}
+        maxWidth="max-w-lg"
         preventClose={creating}
       >
         <form onSubmit={handleCreateRequest} className="mt-2 space-y-3.5">
@@ -461,7 +560,7 @@ export const RequestsPage = () => {
             <select
               value={createForm.type}
               onChange={(e) => setCreateForm({ ...createForm, type: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium text-slate-900 bg-white focus:ring-2 focus:ring-indigo-600 focus:outline-none"
             >
               <option value="indumentaria">Indumentaria (Uniformes, Calzado, EPP)</option>
               <option value="licencia">Licencia (Estudio, Médica, Vacaciones)</option>
@@ -482,7 +581,7 @@ export const RequestsPage = () => {
               value={createForm.title}
               onChange={(e) => setCreateForm({ ...createForm, title: e.target.value })}
               required
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-indigo-600 focus:outline-none placeholder:text-slate-400"
             />
           </div>
 
@@ -496,8 +595,63 @@ export const RequestsPage = () => {
               value={createForm.description}
               onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
               required
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-600 focus:outline-none resize-none"
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-indigo-600 focus:outline-none resize-none placeholder:text-slate-400"
             />
+          </div>
+
+          {/* Adjuntar Archivo Opcional */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Adjuntar comprobante o certificado <span className="font-normal text-slate-400">(Opcional)</span>
+            </label>
+            <div className="mt-1 border border-dashed border-slate-300 rounded-lg p-3 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                onChange={handleFileChange}
+                className="hidden"
+                id="request-attachment-input"
+              />
+
+              {!selectedFile ? (
+                <label
+                  htmlFor="request-attachment-input"
+                  className="flex items-center justify-center gap-2 cursor-pointer text-xs text-slate-600 py-1"
+                >
+                  <Upload className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span className="font-medium text-indigo-600 hover:text-indigo-700">
+                    Seleccionar archivo
+                  </span>
+                  <span className="text-slate-400 text-[11px]">
+                    (PDF, JPG, PNG o WebP — máx. 5 MB)
+                  </span>
+                </label>
+              ) : (
+                <div className="flex items-center justify-between gap-2 bg-white p-2 rounded-md border border-slate-200">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Paperclip className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span className="text-xs font-medium text-slate-800 truncate">
+                      {selectedFile.name}
+                    </span>
+                    <span className="text-[11px] text-slate-400 shrink-0">
+                      ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveFile}
+                    className="text-slate-400 hover:text-rose-600 p-1 rounded transition-colors shrink-0"
+                    title="Quitar archivo adjunto"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+            {fileError && (
+              <p className="mt-1.5 text-[11px] text-rose-600 font-medium">{fileError}</p>
+            )}
           </div>
 
           {createError && (
@@ -536,18 +690,14 @@ export const RequestsPage = () => {
             ? `Solicitante: ${requestToReview.first_name} ${requestToReview.last_name}`
             : ''
         }
-        icon={
-          <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-            <FileText className="w-5 h-5" />
-          </div>
-        }
+        icon={FileText}
         maxWidth="max-w-lg"
         preventClose={resolving}
       >
         {requestToReview && (
           <div>
             {/* Ficha Resumida */}
-            <div className="bg-slate-50 rounded-lg p-3.5 border border-slate-200 space-y-2 mb-4 text-xs">
+            <div className="bg-slate-50 rounded-lg p-3.5 border border-slate-200 space-y-2.5 mb-4 text-xs">
               <div className="flex items-center justify-between">
                 <span
                   className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${
@@ -568,10 +718,39 @@ export const RequestsPage = () => {
                 </p>
               </div>
 
+              {/* Botón destacado para ver o descargar comprobante adjunto */}
+              {requestToReview.attachment_name && (
+                <div className="pt-2 border-t border-slate-200">
+                  <span className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Documentación / Comprobante adjunto:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) =>
+                      handleDownloadAttachment(
+                        requestToReview.id,
+                        requestToReview.attachment_name,
+                        e
+                      )
+                    }
+                    disabled={downloadingId === requestToReview.id}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors"
+                  >
+                    <Paperclip className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <span>
+                      {downloadingId === requestToReview.id
+                        ? 'Descargando comprobante...'
+                        : `Abrir / Descargar: ${requestToReview.attachment_name}`}
+                    </span>
+                  </button>
+                </div>
+              )}
+
               {requestToReview.file_number && (
                 <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-200">
-                  <span className="font-semibold text-slate-700">Legajo:</span> {requestToReview.file_number}{' '}
-                  • <span className="font-semibold text-slate-700">Departamento:</span>{' '}
+                  <span className="font-semibold text-slate-700">Legajo:</span>{' '}
+                  {requestToReview.file_number} •{' '}
+                  <span className="font-semibold text-slate-700">Departamento:</span>{' '}
                   {requestToReview.department || 'Sin asignar'}
                 </div>
               )}
@@ -589,7 +768,8 @@ export const RequestsPage = () => {
                   </p>
                   {requestToReview.resolver_first_name && (
                     <span className="block text-[11px] text-slate-400 mt-2">
-                      Resuelto por: {requestToReview.resolver_first_name} {requestToReview.resolver_last_name}
+                      Resuelto por: {requestToReview.resolver_first_name}{' '}
+                      {requestToReview.resolver_last_name}
                     </span>
                   )}
                 </div>
@@ -648,7 +828,7 @@ export const RequestsPage = () => {
                     placeholder="Instrucciones de entrega, motivo del rechazo o fecha estipulada..."
                     value={resolutionNotes}
                     onChange={(e) => setResolutionNotes(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-600 focus:outline-none resize-none"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-indigo-600 focus:outline-none resize-none placeholder:text-slate-400"
                   />
                   <div className="text-right text-[10px] text-slate-400 mt-0.5">
                     {resolutionNotes.length}/500 caracteres

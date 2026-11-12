@@ -20,6 +20,7 @@ export const requestService = {
 
   /**
    * Registra una nueva solicitud operativa.
+   * Admite tanto un objeto JSON simple como FormData (multipart/form-data) con archivo adjunto.
    */
   create: (data) => api.post('/api/requests', data),
 
@@ -27,6 +28,27 @@ export const requestService = {
    * Actualiza el estado de una solicitud (Aprobar / Rechazar con notas).
    */
   updateStatus: (id, data) => api.patch(`/api/requests/${id}/status`, data),
+
+  /**
+   * Descarga de forma autenticada el archivo adjunto de una solicitud.
+   */
+  downloadAttachment: async (requestId, fileName) => {
+    const blob = await api.get(`/api/requests/${requestId}/attachment`, {
+      responseType: 'blob',
+    });
+
+    const objectUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = fileName || `adjunto_solicitud_${requestId}`;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setTimeout(() => window.URL.revokeObjectURL(objectUrl), 10000);
+    return true;
+  },
 };
 
 export default requestService;

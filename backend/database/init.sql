@@ -66,6 +66,9 @@ CREATE TABLE requests (
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
   resolution_notes VARCHAR(500),
   resolved_by UUID REFERENCES users(id),
+  attachment_name VARCHAR(255),
+  attachment_path VARCHAR(500),
+  attachment_mime VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

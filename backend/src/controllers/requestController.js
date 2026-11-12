@@ -1,5 +1,8 @@
+import fs from "fs";
+import path from "path";
 import { query } from "../config/db.js";
 import { logAuditFromRequest } from "../services/auditService.js";
+import { REQUESTS_UPLOAD_DIR } from "../middlewares/uploadMiddleware.js";
 
 const VALID_REQUEST_TYPES = [
   "indumentaria",
@@ -12,14 +15,29 @@ const VALID_REQUEST_TYPES = [
 const VALID_RESOLVE_STATUSES = ["approved", "rejected"];
 
 /**
- * Crear una nueva solicitud operativa.
+ * Elimina un archivo temporal de forma segura si la validación falla
+ */
+const cleanupUploadedFile = (file) => {
+  if (file?.path && fs.existsSync(file.path)) {
+    try {
+      fs.unlinkSync(file.path);
+    } catch (err) {
+      console.warn("⚠️ No se pudo eliminar el archivo temporal:", err.message);
+    }
+  }
+};
+
+/**
+ * Crear una nueva solicitud operativa con soporte para archivo adjunto opcional.
  * Cualquier colaborador autenticado puede crear una solicitud.
  */
 export const createRequest = async (req, res) => {
   const { type, title, description } = req.body;
   const userId = req.user.id;
+  const attachedFile = req.file;
 
   if (!type || !title || !description) {
+    cleanupUploadedFile(attachedFile);
     return res.status(400).json({
       status: "error",
       message: "Faltan campos requeridos: type, title y description son obligatorios.",
@@ -28,6 +46,7 @@ export const createRequest = async (req, res) => {
 
   const normalizedType = String(type).trim().toLowerCase();
   if (!VALID_REQUEST_TYPES.includes(normalizedType)) {
+    cleanupUploadedFile(attachedFile);
     return res.status(400).json({
       status: "error",
       message: `El tipo de solicitud es inválido. Valores permitidos: ${VALID_REQUEST_TYPES.join(", ")}.`,
@@ -36,6 +55,7 @@ export const createRequest = async (req, res) => {
 
   const trimmedTitle = String(title).trim();
   if (trimmedTitle.length === 0 || trimmedTitle.length > 150) {
+    cleanupUploadedFile(attachedFile);
     return res.status(400).json({
       status: "error",
       message: "El título es obligatorio y no puede superar los 150 caracteres.",
@@ -44,18 +64,31 @@ export const createRequest = async (req, res) => {
 
   const trimmedDescription = String(description).trim();
   if (trimmedDescription.length === 0) {
+    cleanupUploadedFile(attachedFile);
     return res.status(400).json({
       status: "error",
       message: "La descripción de la solicitud no puede estar vacía.",
     });
   }
 
+  const attachmentName = attachedFile ? attachedFile.originalname : null;
+  const attachmentPath = attachedFile ? attachedFile.filename : null;
+  const attachmentMime = attachedFile ? attachedFile.mimetype : null;
+
   try {
     const result = await query(
-      `INSERT INTO requests (user_id, type, title, description, status)
-       VALUES ($1, $2, $3, $4, 'pending')
-       RETURNING id, user_id, type, title, description, status, resolution_notes, resolved_by, created_at, updated_at;`,
-      [userId, normalizedType, trimmedTitle, trimmedDescription]
+      `INSERT INTO requests (user_id, type, title, description, status, attachment_name, attachment_path, attachment_mime)
+       VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7)
+       RETURNING id, user_id, type, title, description, status, resolution_notes, resolved_by, attachment_name, attachment_mime, created_at, updated_at;`,
+      [
+        userId,
+        normalizedType,
+        trimmedTitle,
+        trimmedDescription,
+        attachmentName,
+        attachmentPath,
+        attachmentMime,
+      ]
     );
 
     const newRequest = result.rows[0];
@@ -69,6 +102,7 @@ export const createRequest = async (req, res) => {
         type: newRequest.type,
         title: newRequest.title,
         status: newRequest.status,
+        hasAttachment: Boolean(newRequest.attachment_name),
       },
     });
 
@@ -81,6 +115,7 @@ export const createRequest = async (req, res) => {
       request: newRequest,
     });
   } catch (error) {
+    cleanupUploadedFile(attachedFile);
     console.error("❌ Error al crear solicitud:", error.message);
     return res.status(500).json({
       status: "error",
@@ -91,6 +126,7 @@ export const createRequest = async (req, res) => {
 
 /**
  * Obtener exclusivamente las solicitudes del usuario autenticado en sesión.
+ * Excluye attachment_path por seguridad interna.
  */
 export const getMyRequests = async (req, res) => {
   const userId = req.user.id;
@@ -106,6 +142,9 @@ export const getMyRequests = async (req, res) => {
          r.status,
          r.resolution_notes,
          r.resolved_by,
+         r.attachment_name,
+         r.attachment_mime,
+         (r.attachment_name IS NOT NULL) AS has_attachment,
          r.created_at,
          r.updated_at,
          u.first_name,
@@ -143,6 +182,7 @@ export const getMyRequests = async (req, res) => {
 /**
  * Obtener todas las solicitudes registradas (Solo Admin y RRHH).
  * Admite filtros opcionales por type, status o búsqueda por texto.
+ * Excluye attachment_path por seguridad interna.
  */
 export const getAllRequests = async (req, res) => {
   const { status, type, search } = req.query;
@@ -182,6 +222,9 @@ export const getAllRequests = async (req, res) => {
         r.status,
         r.resolution_notes,
         r.resolved_by,
+        r.attachment_name,
+        r.attachment_mime,
+        (r.attachment_name IS NOT NULL) AS has_attachment,
         r.created_at,
         r.updated_at,
         u.first_name,
@@ -213,6 +256,81 @@ export const getAllRequests = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al obtener el listado de solicitudes.",
+    });
+  }
+};
+
+/**
+ * Descarga o visualización protegida del archivo adjunto de una solicitud.
+ * Regla de privacidad (RBAC): Solo el creador, Administrador (1) o Recursos Humanos (2).
+ */
+export const downloadRequestAttachment = async (req, res) => {
+  const { id } = req.params;
+  const user = req.user;
+
+  try {
+    const result = await query(
+      `SELECT id, user_id, title, attachment_name, attachment_path, attachment_mime 
+       FROM requests 
+       WHERE id = $1`,
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Solicitud no encontrada.",
+      });
+    }
+
+    const requestItem = result.rows[0];
+
+    if (!requestItem.attachment_name || !requestItem.attachment_path) {
+      return res.status(404).json({
+        status: "error",
+        message: "La solicitud no cuenta con ningún archivo adjunto.",
+      });
+    }
+
+    // Regla de privacidad (RBAC): dueño de la solicitud, Administrador (1) o Recursos Humanos (2)
+    const isOwner = String(requestItem.user_id) === String(user.id);
+    const isAdmin = Number(user.role_id) === 1;
+    const isHR = Number(user.role_id) === 2;
+
+    if (!isOwner && !isAdmin && !isHR) {
+      return res.status(403).json({
+        status: "error",
+        message: "No tienes permisos para acceder al archivo adjunto de esta solicitud.",
+      });
+    }
+
+    const fullFilePath = path.isAbsolute(requestItem.attachment_path)
+      ? requestItem.attachment_path
+      : path.resolve(REQUESTS_UPLOAD_DIR, requestItem.attachment_path);
+
+    if (!fs.existsSync(fullFilePath)) {
+      return res.status(404).json({
+        status: "error",
+        message: "El archivo adjunto no se encuentra disponible en el servidor.",
+      });
+    }
+
+    // Enviar archivo con cabeceras seguras
+    const mimeType = requestItem.attachment_mime || "application/octet-stream";
+    const encodedFileName = encodeURIComponent(requestItem.attachment_name);
+
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${requestItem.attachment_name}"; filename*=UTF-8''${encodedFileName}`
+    );
+
+    return res.sendFile(fullFilePath);
+  } catch (error) {
+    console.error("❌ Error al descargar archivo adjunto:", error.message);
+    return res.status(500).json({
+      status: "error",
+      message: "Error interno al procesar la descarga del archivo adjunto.",
     });
   }
 };
@@ -253,17 +371,19 @@ export const updateRequestStatus = async (req, res) => {
     if (existingResult.rowCount === 0) {
       return res.status(404).json({
         status: "error",
-        message: "Solicitud no encontrada.",
+        message: "La solicitud que intentas actualizar no existe.",
       });
     }
 
     const currentRequest = existingResult.rows[0];
 
-    // Inmutabilidad: si ya está resuelta (approved o rejected), no se puede modificar
+    // Inmutabilidad
     if (currentRequest.status === "approved" || currentRequest.status === "rejected") {
       return res.status(403).json({
         status: "error",
-        message: "La solicitud ya ha sido resuelta y no puede ser modificada.",
+        message: `Esta solicitud ya fue ${
+          currentRequest.status === "approved" ? "aprobada" : "rechazada"
+        } y no puede modificarse nuevamente.`,
       });
     }
 
@@ -280,34 +400,35 @@ export const updateRequestStatus = async (req, res) => {
 
     const updatedRequest = updateResult.rows[0];
 
-    // Enviar notificación al solicitante
-    try {
-      const notifTitle = "Actualización de Solicitud";
-      const notifMessage = `Tu solicitud "${currentRequest.title}" ha sido ${
-        normalizedStatus === "approved" ? "aprobada" : "rechazada"
-      }.`;
-      await query(
-        `INSERT INTO notifications (title, message, type, user_id)
-         VALUES ($1, $2, 'request_update', $3)`,
-        [notifTitle, notifMessage, currentRequest.user_id]
-      );
-    } catch (notifErr) {
-      console.warn("⚠️ No se pudo registrar la notificación de solicitud:", notifErr.message);
-    }
-
-    // Registrar evento de auditoría
+    // Registrar en audit_logs
     await logAuditFromRequest(req, {
-      action: "REQUEST_RESOLVED",
+      action: "REQUEST_STATUS_UPDATED",
       entityType: "requests",
-      entityId: String(id),
+      entityId: String(updatedRequest.id),
       oldValues: {
         status: currentRequest.status,
       },
       newValues: {
-        status: normalizedStatus,
-        resolution_notes: trimmedNotes,
+        status: updatedRequest.status,
+        resolution_notes: updatedRequest.resolution_notes,
       },
     });
+
+    // Enviar notificación automática al colaborador solicitante
+    try {
+      const statusLabel = normalizedStatus === "approved" ? "aprobada" : "rechazada";
+      const notifMessage = trimmedNotes
+        ? `Tu solicitud "${currentRequest.title}" ha sido ${statusLabel}. Dictamen: ${trimmedNotes}`
+        : `Tu solicitud "${currentRequest.title}" ha sido ${statusLabel} por el área de Recursos Humanos.`;
+
+      await query(
+        `INSERT INTO notifications (user_id, title, message, type)
+         VALUES ($1, $2, $3, 'request_update');`,
+        [currentRequest.user_id, `Solicitud ${statusLabel}`, notifMessage]
+      );
+    } catch (notifErr) {
+      console.warn("⚠️ No se pudo registrar la notificación automática de solicitud:", notifErr.message);
+    }
 
     return res.status(200).json({
       status: "success",
@@ -318,7 +439,7 @@ export const updateRequestStatus = async (req, res) => {
       request: updatedRequest,
     });
   } catch (error) {
-    console.error("❌ Error al actualizar estado de la solicitud:", error.message);
+    console.error("❌ Error al actualizar estado de solicitud:", error.message);
     return res.status(500).json({
       status: "error",
       message: "Error interno al actualizar la solicitud.",

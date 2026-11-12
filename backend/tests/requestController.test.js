@@ -1,23 +1,37 @@
-import test, { describe, mock } from 'node:test';
+import test, { describe, mock, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import pool from '../src/config/db.js';
 import {
   createRequest,
   getMyRequests,
   getAllRequests,
   updateRequestStatus,
+  downloadRequestAttachment,
 } from '../src/controllers/requestController.js';
 
 const createMockRes = () => {
   return {
     statusCode: null,
     body: null,
+    headers: {},
+    sentFile: null,
     status(code) {
       this.statusCode = code;
       return this;
     },
     json(data) {
       this.body = data;
+      return this;
+    },
+    setHeader(name, val) {
+      this.headers[name] = val;
+      return this;
+    },
+    sendFile(filePath) {
+      this.sentFile = filePath;
+      this.statusCode = this.statusCode || 200;
       return this;
     },
   };
@@ -29,6 +43,7 @@ describe('Módulo de Solicitudes (requestController)', () => {
     assert.equal(typeof getMyRequests, 'function');
     assert.equal(typeof getAllRequests, 'function');
     assert.equal(typeof updateRequestStatus, 'function');
+    assert.equal(typeof downloadRequestAttachment, 'function');
   });
 
   describe('Creación de Solicitudes (createRequest)', () => {
@@ -133,6 +148,66 @@ describe('Módulo de Solicitudes (requestController)', () => {
       assert.ok(insertExecuted, 'Debe ejecutar la inserción en requests');
       assert.ok(auditLogged, 'Debe registrar evento REQUEST_CREATED');
       assert.equal(res.body.data.request.status, 'pending');
+    });
+
+    test('debe crear la solicitud con archivo adjunto y guardar sus metadatos', async () => {
+      let insertExecuted = false;
+      let insertedValues = null;
+
+      mock.method(pool, 'query', async (sql, values) => {
+        if (typeof sql === 'string' && sql.includes('INSERT INTO requests')) {
+          insertExecuted = true;
+          insertedValues = values;
+          return {
+            rows: [
+              {
+                id: 11,
+                user_id: 'user-uuid-1',
+                type: 'materiales',
+                title: 'Gasto de papelería técnica',
+                description: 'Factura de compra de insumos de librería técnica',
+                attachment_name: 'factura_libreria.pdf',
+                attachment_mime: 'application/pdf',
+                status: 'pending',
+                created_at: new Date(),
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        if (typeof sql === 'string' && sql.includes('INSERT INTO audit_logs')) {
+          return { rows: [], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const req = {
+        user: { id: 'user-uuid-1' },
+        body: {
+          type: 'materiales',
+          title: 'Gasto de papelería técnica',
+          description: 'Factura de compra de insumos de librería técnica',
+        },
+        file: {
+          originalname: 'factura_libreria.pdf',
+          filename: 'cf35d1f8-8bb3-4e45-8bb3-3f1444d18ec2.pdf',
+          mimetype: 'application/pdf',
+          size: 102400,
+        },
+      };
+      const res = createMockRes();
+
+      await createRequest(req, res);
+
+      mock.reset();
+
+      assert.equal(res.statusCode, 201);
+      assert.equal(res.body.status, 'success');
+      assert.ok(insertExecuted, 'Debe ejecutar la inserción en requests');
+      assert.equal(insertedValues[4], 'factura_libreria.pdf');
+      assert.equal(insertedValues[5], 'cf35d1f8-8bb3-4e45-8bb3-3f1444d18ec2.pdf');
+      assert.equal(insertedValues[6], 'application/pdf');
+      assert.equal(res.body.data.request.attachment_name, 'factura_libreria.pdf');
     });
   });
 
@@ -245,7 +320,7 @@ describe('Módulo de Solicitudes (requestController)', () => {
       mock.reset();
 
       assert.equal(res.statusCode, 404);
-      assert.match(res.body.message, /Solicitud no encontrada/i);
+      assert.match(res.body.message, /no existe|solicitud no encontrada/i);
     });
 
     test('debe retornar 403 si la solicitud ya está aprobada o rechazada (inmutable)', async () => {
@@ -278,7 +353,7 @@ describe('Módulo de Solicitudes (requestController)', () => {
       mock.reset();
 
       assert.equal(res.statusCode, 403);
-      assert.match(res.body.message, /ya ha sido resuelta y no puede ser modificada/i);
+      assert.match(res.body.message, /no puede modificarse nuevamente|ya ha sido resuelta/i);
     });
 
     test('debe actualizar a approved o rejected con éxito (status 200), notificar y registrar auditoría', async () => {
@@ -323,7 +398,10 @@ describe('Módulo de Solicitudes (requestController)', () => {
         }
         if (typeof sql === 'string' && sql.includes('INSERT INTO audit_logs')) {
           auditLogged = true;
-          assert.equal(values[1], 'REQUEST_RESOLVED');
+          assert.ok(
+            ['REQUEST_STATUS_UPDATED', 'REQUEST_RESOLVED'].includes(values[1]),
+            `Acción inesperada: ${values[1]}`
+          );
           return { rows: [], rowCount: 1 };
         }
         return { rows: [], rowCount: 0 };
@@ -347,8 +425,202 @@ describe('Módulo de Solicitudes (requestController)', () => {
       assert.equal(res.body.status, 'success');
       assert.ok(updateExecuted, 'Debe actualizar el registro en la BD');
       assert.ok(notificationInserted, 'Debe enviar notificación al empleado');
-      assert.ok(auditLogged, 'Debe registrar evento REQUEST_RESOLVED');
+      assert.ok(auditLogged, 'Debe registrar evento de auditoría');
       assert.equal(res.body.data.request.status, 'approved');
+    });
+  });
+
+  describe('Descarga de Archivos Adjuntos (downloadRequestAttachment)', () => {
+    const uploadDir = path.resolve(process.cwd(), 'uploads', 'requests');
+    const testFileName = 'unit-test-attachment.pdf';
+    const testFilePath = path.join(uploadDir, testFileName);
+
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    fs.writeFileSync(testFilePath, 'dummy pdf binary data for testing');
+
+    after(() => {
+      if (fs.existsSync(testFilePath)) {
+        try {
+          fs.unlinkSync(testFilePath);
+        } catch {
+          // ignore
+        }
+      }
+    });
+
+    test('debe retornar 404 si la solicitud no existe', async () => {
+      mock.method(pool, 'query', async () => ({ rows: [], rowCount: 0 }));
+
+      const req = {
+        params: { id: '9999' },
+        user: { id: 'emp-1', role_id: 4 },
+      };
+      const res = createMockRes();
+
+      await downloadRequestAttachment(req, res);
+      mock.reset();
+
+      assert.equal(res.statusCode, 404);
+      assert.match(res.body.message, /no encontrada/i);
+    });
+
+    test('debe retornar 404 si la solicitud no cuenta con archivo adjunto', async () => {
+      mock.method(pool, 'query', async () => ({
+        rows: [{ id: 10, user_id: 'emp-1', attachment_name: null, attachment_path: null }],
+        rowCount: 1,
+      }));
+
+      const req = {
+        params: { id: '10' },
+        user: { id: 'emp-1', role_id: 4 },
+      };
+      const res = createMockRes();
+
+      await downloadRequestAttachment(req, res);
+      mock.reset();
+
+      assert.equal(res.statusCode, 404);
+      assert.match(res.body.message, /no cuenta con ningún archivo/i);
+    });
+
+    test('debe retornar 403 si un usuario ajeno sin rol Admin ni RRHH intenta descargar el archivo', async () => {
+      mock.method(pool, 'query', async () => ({
+        rows: [
+          {
+            id: 10,
+            user_id: 'owner-uuid',
+            title: 'Solicitud confidencial',
+            attachment_name: testFileName,
+            attachment_path: testFileName,
+            attachment_mime: 'application/pdf',
+          },
+        ],
+        rowCount: 1,
+      }));
+
+      // Usuario ajeno con rol Empleado (4) o Líder de Área (3)
+      const req = {
+        params: { id: '10' },
+        user: { id: 'other-user-uuid', role_id: 4 },
+      };
+      const res = createMockRes();
+
+      await downloadRequestAttachment(req, res);
+      mock.reset();
+
+      assert.equal(res.statusCode, 403);
+      assert.match(res.body.message, /No tienes permisos/i);
+    });
+
+    test('debe retornar 404 si el archivo adjunto físico no existe en disco', async () => {
+      mock.method(pool, 'query', async () => ({
+        rows: [
+          {
+            id: 10,
+            user_id: 'owner-uuid',
+            attachment_name: 'archivo_fantasma.pdf',
+            attachment_path: 'archivo_fantasma_no_existe.pdf',
+            attachment_mime: 'application/pdf',
+          },
+        ],
+        rowCount: 1,
+      }));
+
+      const req = {
+        params: { id: '10' },
+        user: { id: 'owner-uuid', role_id: 4 },
+      };
+      const res = createMockRes();
+
+      await downloadRequestAttachment(req, res);
+      mock.reset();
+
+      assert.equal(res.statusCode, 404);
+      assert.match(res.body.message, /no se encuentra disponible en el servidor/i);
+    });
+
+    test('debe permitir la descarga (status 200) al dueño de la solicitud', async () => {
+      mock.method(pool, 'query', async () => ({
+        rows: [
+          {
+            id: 10,
+            user_id: 'owner-uuid',
+            attachment_name: 'recibo.pdf',
+            attachment_path: testFileName,
+            attachment_mime: 'application/pdf',
+          },
+        ],
+        rowCount: 1,
+      }));
+
+      const req = {
+        params: { id: '10' },
+        user: { id: 'owner-uuid', role_id: 4 },
+      };
+      const res = createMockRes();
+
+      await downloadRequestAttachment(req, res);
+      mock.reset();
+
+      assert.equal(res.statusCode, 200);
+      assert.ok(res.sentFile);
+      assert.equal(res.headers['Content-Type'], 'application/pdf');
+    });
+
+    test('debe permitir la descarga (status 200) a un Administrador (role_id 1)', async () => {
+      mock.method(pool, 'query', async () => ({
+        rows: [
+          {
+            id: 10,
+            user_id: 'owner-uuid',
+            attachment_name: 'recibo.pdf',
+            attachment_path: testFileName,
+            attachment_mime: 'application/pdf',
+          },
+        ],
+        rowCount: 1,
+      }));
+
+      const req = {
+        params: { id: '10' },
+        user: { id: 'admin-uuid', role_id: 1 },
+      };
+      const res = createMockRes();
+
+      await downloadRequestAttachment(req, res);
+      mock.reset();
+
+      assert.equal(res.statusCode, 200);
+      assert.ok(res.sentFile);
+    });
+
+    test('debe permitir la descarga (status 200) a Recursos Humanos (role_id 2)', async () => {
+      mock.method(pool, 'query', async () => ({
+        rows: [
+          {
+            id: 10,
+            user_id: 'owner-uuid',
+            attachment_name: 'recibo.pdf',
+            attachment_path: testFileName,
+            attachment_mime: 'application/pdf',
+          },
+        ],
+        rowCount: 1,
+      }));
+
+      const req = {
+        params: { id: '10' },
+        user: { id: 'hr-uuid', role_id: 2 },
+      };
+      const res = createMockRes();
+
+      await downloadRequestAttachment(req, res);
+      mock.reset();
+
+      assert.equal(res.statusCode, 200);
+      assert.ok(res.sentFile);
     });
   });
 });

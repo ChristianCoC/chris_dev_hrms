@@ -103,6 +103,9 @@ export const testConnection = async () => {
     await pool.query('ALTER TABLE notifications ADD COLUMN IF NOT EXISTS title VARCHAR(150)');
     await pool.query("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT 'system'");
     await pool.query('ALTER TABLE notifications ADD COLUMN IF NOT EXISTS sender_id UUID REFERENCES users(id) ON DELETE SET NULL');
+    await pool.query('ALTER TABLE requests ADD COLUMN IF NOT EXISTS attachment_name VARCHAR(255)');
+    await pool.query('ALTER TABLE requests ADD COLUMN IF NOT EXISTS attachment_path VARCHAR(500)');
+    await pool.query('ALTER TABLE requests ADD COLUMN IF NOT EXISTS attachment_mime VARCHAR(100)');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS requests (
         id SERIAL PRIMARY KEY,
