@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Clock, CheckCircle2, XCircle, AlertCircle, X, MessageSquareQuote } from 'lucide-react';
-import api from '../api/client.js';
+import { Plus, Search, Clock, CheckCircle2, XCircle, AlertCircle, MessageSquareQuote } from 'lucide-react';
+import { claimService } from '../services/claimService.js';
 import { useAuth } from '../context/AuthContext.jsx';
-import { StatusBadge, PriorityBadge } from '../components/StatusBadge.jsx';
+import { StatusBadge, PriorityBadge } from '../components/ui/StatusBadge.jsx';
+import { Modal } from '../components/ui/Modal.jsx';
+import { EmptyState } from '../components/ui/EmptyState.jsx';
 
 export const ClaimsPage = () => {
   const [claims, setClaims] = useState([]);
@@ -39,7 +41,7 @@ export const ClaimsPage = () => {
   const fetchClaims = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/api/claims');
+      const res = await claimService.getAll();
       const list = res.data?.claims || [];
       setClaims(list);
       if (list.length > 0) {
@@ -64,7 +66,7 @@ export const ClaimsPage = () => {
 
     try {
       setSubmittingClaim(true);
-      const res = await api.post('/api/claims', {
+      const res = await claimService.create({
         title: newTitle.trim(),
         description: newDescription.trim(),
         priority: newPriority,
@@ -94,7 +96,7 @@ export const ClaimsPage = () => {
 
     try {
       setResolvingClaim(true);
-      await api.patch(`/api/claims/${selectedClaim.id}/resolve`, {
+      await claimService.resolve(selectedClaim.id, {
         status: resolveStatus,
         resolution_notes: resolutionNotes.trim() || undefined,
       });
@@ -214,15 +216,16 @@ export const ClaimsPage = () => {
                 Cargando reclamos...
               </div>
             ) : filteredClaims.length === 0 ? (
-              <div className="p-8 text-center">
-                <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm font-medium text-slate-700">Sin reclamos que mostrar</p>
-                <p className="text-xs text-slate-400 mt-1">
-                  {claims.length === 0
+              <EmptyState
+                icon={AlertCircle}
+                title="Sin reclamos que mostrar"
+                description={
+                  claims.length === 0
                     ? 'Aún no se han registrado reclamos en esta sección.'
-                    : 'Ningún reclamo coincide con los filtros aplicados.'}
-                </p>
-              </div>
+                    : 'Ningún reclamo coincide con los filtros aplicados.'
+                }
+                className="py-8"
+              />
             ) : (
               filteredClaims.map((claim) => {
                 const isSelected = selectedClaim?.id === claim.id;
@@ -409,100 +412,87 @@ export const ClaimsPage = () => {
               )}
             </div>
           ) : (
-            <div className="py-20 text-center text-slate-400">
-              <Clock className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-              <p className="text-sm font-medium text-slate-600">Ningún reclamo seleccionado</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Haz clic en una de las solicitudes del panel izquierdo para ver sus detalles.
-              </p>
-            </div>
+            <EmptyState
+              icon={Clock}
+              title="Ningún reclamo seleccionado"
+              description="Haz clic en una de las solicitudes del panel izquierdo para ver sus detalles."
+              className="py-20"
+            />
           )}
         </div>
       </div>
 
       {/* Modal: Radicar Nuevo Reclamo */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl relative">
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-              aria-label="Cerrar modal"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <h3 className="text-lg font-bold text-slate-900">
-              Radicar nuevo reclamo o solicitud
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              Ingresa los detalles para que el equipo de RRHH pueda atender tu requerimiento.
-            </p>
-
-            <form onSubmit={handleCreateClaim} className="mt-4 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Título del reclamo
-                </label>
-                <input
-                  type="text"
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="Ej: Cambio de silla ergonómica por dolencia lumbar"
-                  required
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 placeholder:text-slate-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Prioridad
-                </label>
-                <select
-                  value={newPriority}
-                  onChange={(e) => setNewPriority(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-800"
-                >
-                  <option value="low">Baja</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">Alta</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Descripción detallada
-                </label>
-                <textarea
-                  rows={4}
-                  value={newDescription}
-                  onChange={(e) => setNewDescription(e.target.value)}
-                  placeholder="Describe con claridad el motivo de tu solicitud o incidencia..."
-                  required
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 placeholder:text-slate-400"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingClaim}
-                  className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50"
-                >
-                  {submittingClaim ? 'Radicando...' : 'Crear reclamo'}
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title="Radicar nuevo reclamo o solicitud"
+        subtitle="Ingresa los detalles para que el equipo de RRHH pueda atender tu requerimiento."
+        maxWidth="max-w-lg"
+        preventClose={submittingClaim}
+      >
+        <form onSubmit={handleCreateClaim} className="mt-4 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Título del reclamo
+            </label>
+            <input
+              type="text"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="Ej: Cambio de silla ergonómica por dolencia lumbar"
+              required
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 placeholder:text-slate-400"
+            />
           </div>
-        </div>
-      )}
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Prioridad
+            </label>
+            <select
+              value={newPriority}
+              onChange={(e) => setNewPriority(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-800"
+            >
+              <option value="low">Baja</option>
+              <option value="normal">Normal</option>
+              <option value="high">Alta</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Descripción detallada
+            </label>
+            <textarea
+              rows={4}
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+              placeholder="Describe con claridad el motivo de tu solicitud o incidencia..."
+              required
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 placeholder:text-slate-400"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={submittingClaim}
+              className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50"
+            >
+              {submittingClaim ? 'Radicando...' : 'Crear reclamo'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

@@ -29,7 +29,6 @@ export const listAuditLogs = async (req, res) => {
     return res.status(500).json({
       status: 'error',
       message: 'Error interno al consultar los registros de auditoría.',
-      error: error.message,
     });
   }
 };

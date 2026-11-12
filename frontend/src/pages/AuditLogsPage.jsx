@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, RefreshCw, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
-import api from '../api/client.js';
+import { auditService } from '../services/auditService.js';
+import { Modal } from '../components/ui/Modal.jsx';
 
 export const AuditLogsPage = () => {
   const [logs, setLogs] = useState([]);
@@ -13,7 +14,7 @@ export const AuditLogsPage = () => {
   const fetchLogs = async (targetPage = 1) => {
     try {
       setLoading(true);
-      const res = await api.get(`/api/audit-logs?page=${targetPage}&limit=25`);
+      const res = await auditService.getAll({ page: targetPage, limit: 25 });
       setLogs(res.data?.logs || []);
       setTotalPages(res.totalPages || 1);
       setTotalRecords(res.total || 0);
@@ -49,11 +50,19 @@ export const AuditLogsPage = () => {
       case 'CLAIM_STATUS_UPDATED':
       case 'CLAIM_RESOLVED':
         return <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">Reclamo Actualizado</span>;
+      case 'REQUEST_CREATED':
+        return <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">Solicitud Creada</span>;
+      case 'REQUEST_RESOLVED':
+        return <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">Solicitud Resuelta</span>;
       case 'USER_DELETED':
         return <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">Usuario Eliminado</span>;
+      case 'EMPLOYEE_DEACTIVATED_BY_ADMIN':
+        return <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">Baja Colaborador</span>;
       case 'EMPLOYEE_UPDATED':
       case 'USER_UPDATED':
         return <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">Ficha Modificada</span>;
+      case 'USER_CREATED_BY_ADMIN':
+        return <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">Alta Colaborador</span>;
       default:
         return <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">{action}</span>;
     }
@@ -77,7 +86,7 @@ export const AuditLogsPage = () => {
 
         <button
           onClick={() => fetchLogs(page)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg shadow-xs"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg shadow-xs transition-colors"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           <span>Actualizar registros</span>
@@ -146,7 +155,7 @@ export const AuditLogsPage = () => {
                     <td className="px-4 py-3 text-right font-sans">
                       <button
                         onClick={() => setSelectedLog(log)}
-                        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         <span>Ver JSON</span>
@@ -169,7 +178,7 @@ export const AuditLogsPage = () => {
               <button
                 disabled={page <= 1}
                 onClick={() => fetchLogs(page - 1)}
-                className="px-2.5 py-1 text-xs font-medium border border-slate-300 rounded bg-white hover:bg-slate-50 disabled:opacity-40"
+                className="px-2.5 py-1 text-xs font-medium border border-slate-300 rounded bg-white hover:bg-slate-50 disabled:opacity-40 transition-colors"
               >
                 <ChevronLeft className="w-3.5 h-3.5 inline mr-1" />
                 Anterior
@@ -177,7 +186,7 @@ export const AuditLogsPage = () => {
               <button
                 disabled={page >= totalPages}
                 onClick={() => fetchLogs(page + 1)}
-                className="px-2.5 py-1 text-xs font-medium border border-slate-300 rounded bg-white hover:bg-slate-50 disabled:opacity-40"
+                className="px-2.5 py-1 text-xs font-medium border border-slate-300 rounded bg-white hover:bg-slate-50 disabled:opacity-40 transition-colors"
               >
                 Siguiente
                 <ChevronRight className="w-3.5 h-3.5 inline ml-1" />
@@ -187,53 +196,62 @@ export const AuditLogsPage = () => {
         )}
       </div>
 
-      {/* Modal: Visor de valores auditados */}
-      {selectedLog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl">
-            <h3 className="text-sm font-bold text-slate-900">
-              Detalle del Evento #{selectedLog.id}
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">
+      {/* Modal: Visor de valores auditados con Modal base */}
+      <Modal
+        isOpen={!!selectedLog}
+        onClose={() => setSelectedLog(null)}
+        title={selectedLog ? `Detalle del Evento #${selectedLog.id}` : ''}
+        subtitle={
+          selectedLog ? (
+            <span>
               Acción: <strong className="text-slate-800">{selectedLog.action}</strong> sobre entidad{' '}
               <strong className="text-slate-800">{selectedLog.entity_type}</strong>
-            </p>
+            </span>
+          ) : ''
+        }
+        icon={
+          <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+            <ShieldAlert className="w-5 h-5" />
+          </div>
+        }
+        maxWidth="max-w-lg"
+      >
+        {selectedLog && (
+          <div className="mt-2 space-y-3">
+            {selectedLog.old_values && (
+              <div>
+                <span className="text-[11px] font-semibold text-slate-500 block mb-1">
+                  Valores Previos (old_values):
+                </span>
+                <pre className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs overflow-x-auto font-mono text-slate-700 max-h-48">
+                  {JSON.stringify(selectedLog.old_values, null, 2)}
+                </pre>
+              </div>
+            )}
 
-            <div className="mt-4 space-y-3">
-              {selectedLog.old_values && (
-                <div>
-                  <span className="text-[11px] font-semibold text-slate-500 block mb-1">
-                    Valores Previos (old_values):
-                  </span>
-                  <pre className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs overflow-x-auto font-mono text-slate-700">
-                    {JSON.stringify(selectedLog.old_values, null, 2)}
-                  </pre>
-                </div>
-              )}
+            {selectedLog.new_values && (
+              <div>
+                <span className="text-[11px] font-semibold text-slate-500 block mb-1">
+                  Valores Nuevos (new_values):
+                </span>
+                <pre className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs overflow-x-auto font-mono text-slate-700 max-h-48">
+                  {JSON.stringify(selectedLog.new_values, null, 2)}
+                </pre>
+              </div>
+            )}
 
-              {selectedLog.new_values && (
-                <div>
-                  <span className="text-[11px] font-semibold text-slate-500 block mb-1">
-                    Valores Nuevos (new_values):
-                  </span>
-                  <pre className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs overflow-x-auto font-mono text-slate-700">
-                    {JSON.stringify(selectedLog.new_values, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6 flex justify-end">
+            <div className="mt-5 flex justify-end">
               <button
+                type="button"
                 onClick={() => setSelectedLog(null)}
-                className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg"
+                className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors"
               >
                 Cerrar
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 };

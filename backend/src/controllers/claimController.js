@@ -1,6 +1,9 @@
 import { query } from "../config/db.js";
-import { logAuditEvent } from "../services/auditService.js";
+import { logAuditFromRequest } from "../services/auditService.js";
 
+/**
+ * Crear un nuevo reclamo operativo.
+ */
 export const createClaim = async (req, res) => {
   const { title, description, priority = "normal" } = req.body;
   const filed_by_id = req.user.id;
@@ -23,9 +26,7 @@ export const createClaim = async (req, res) => {
     const newClaim = result.rows[0];
 
     // Registrar evento de auditoría
-    const ipAddress = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || null;
-    await logAuditEvent({
-      userId: filed_by_id,
+    await logAuditFromRequest(req, {
       action: "CLAIM_CREATED",
       entityType: "claims",
       entityId: newClaim.id,
@@ -34,7 +35,6 @@ export const createClaim = async (req, res) => {
         priority: newClaim.priority,
         status: "pending",
       },
-      ipAddress,
     });
 
     return res.status(201).json({
@@ -49,11 +49,14 @@ export const createClaim = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al crear el reclamo.",
-      error: error.message,
     });
   }
 };
 
+/**
+ * Resolver o cambiar estado de un reclamo.
+ * Exclusivo para administradores y RRHH. Inmutable una vez aprobado o rechazado.
+ */
 export const resolveClaim = async (req, res) => {
   const { id } = req.params;
   const { status, resolution_notes, notes } = req.body;
@@ -117,9 +120,7 @@ export const resolveClaim = async (req, res) => {
     );
 
     // Registrar evento de auditoría
-    const ipAddress = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || null;
-    await logAuditEvent({
-      userId: assigned_to_id,
+    await logAuditFromRequest(req, {
       action: "CLAIM_STATUS_UPDATED",
       entityType: "claims",
       entityId: id,
@@ -130,7 +131,6 @@ export const resolveClaim = async (req, res) => {
         status,
         resolution_notes: finalNotes || null,
       },
-      ipAddress,
     });
 
     return res.status(200).json({
@@ -145,11 +145,13 @@ export const resolveClaim = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al resolver el reclamo.",
-      error: error.message,
     });
   }
 };
 
+/**
+ * Obtener reclamos del usuario (si es colaborador) o todos (si es Admin o RRHH).
+ */
 export const getClaims = async (req, res) => {
   const userId = req.user.id;
   const userRole = req.user.role_id;
@@ -167,7 +169,7 @@ export const getClaims = async (req, res) => {
         JOIN users u1 ON c.filed_by_id = u1.id
         LEFT JOIN users u2 ON c.assigned_to_id = u2.id
         ORDER BY c.created_at DESC
-        `;
+      `;
     } else {
       queryText = `
         SELECT c.*,
@@ -176,7 +178,7 @@ export const getClaims = async (req, res) => {
         LEFT JOIN users u2 ON c.assigned_to_id = u2.id
         WHERE c.filed_by_id = $1
         ORDER BY c.created_at DESC
-        `;
+      `;
       queryParams = [userId];
     }
 
@@ -193,7 +195,6 @@ export const getClaims = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al obtener los reclamos.",
-      error: error.message,
     });
   }
 };

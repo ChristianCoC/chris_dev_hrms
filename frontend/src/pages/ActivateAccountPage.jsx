@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Lock, AlertCircle, CheckCircle2, ArrowRight, Eye, EyeOff, ShieldCheck, UserCheck } from 'lucide-react';
-import api from '../api/client.js';
+import { authService } from '../services/index.js';
 
 export const ActivateAccountPage = () => {
   const [searchParams] = useSearchParams();
@@ -45,17 +45,11 @@ export const ActivateAccountPage = () => {
       setLoading(true);
       // Consume endpoint de activación (con fallback a reset-password si fuera necesario)
       try {
-        await api.post('/api/auth/activate', {
-          token,
-          password,
-        });
+        await authService.activateAccount(token, password);
       } catch (activateErr) {
         // En caso de que el proxy o cache use reset-password
         if (activateErr.message && activateErr.message.includes('404')) {
-          await api.post('/api/auth/reset-password', {
-            token,
-            password,
-          });
+          await authService.resetPassword(token, password);
         } else {
           throw activateErr;
         }

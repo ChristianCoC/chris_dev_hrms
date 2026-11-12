@@ -81,7 +81,6 @@ export const loginUser = async (req, res) => {
     return res.status(500).json({
       status: 'error',
       message: 'Error interno al iniciar sesión.',
-      error: error.message,
     });
   }
 };

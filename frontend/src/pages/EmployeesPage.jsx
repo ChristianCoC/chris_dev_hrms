@@ -1,7 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Building2, Phone, Calendar, Shield, Edit3, X, CheckCircle2, UserPlus, Mail, AlertCircle, ExternalLink, UserX } from 'lucide-react';
-import api from '../api/client.js';
+import {
+  Search,
+  Building2,
+  Phone,
+  Edit3,
+  CheckCircle2,
+  UserPlus,
+  Mail,
+  AlertCircle,
+  ExternalLink,
+  UserX,
+  Users,
+} from 'lucide-react';
 import { useAuth, ROLE_LABELS } from '../context/AuthContext.jsx';
+import { employeeService } from '../services/employeeService.js';
+import { Modal, EmptyState } from '../components/ui/index.js';
 
 export const EmployeesPage = () => {
   const { user, isAdmin } = useAuth();
@@ -58,8 +71,12 @@ export const EmployeesPage = () => {
       setError('');
       setLoading(true);
       const [empRes, statsRes] = await Promise.all([
-        api.get(`/api/employees?search=${encodeURIComponent(search)}&department=${encodeURIComponent(departmentFilter)}&role_id=${roleFilter}`),
-        api.get('/api/employees/stats'),
+        employeeService.getAll({
+          search,
+          department: departmentFilter,
+          role_id: roleFilter,
+        }),
+        employeeService.getStats(),
       ]);
 
       const rawEmployees =
@@ -87,7 +104,7 @@ export const EmployeesPage = () => {
 
     try {
       setCreating(true);
-      const res = await api.post('/api/employees', {
+      const res = await employeeService.create({
         first_name: createForm.first_name.trim(),
         last_name: createForm.last_name.trim(),
         email: createForm.email.trim(),
@@ -126,7 +143,7 @@ export const EmployeesPage = () => {
   const handleResendInvitation = async (employee) => {
     try {
       setResendingId(employee.id);
-      const res = await api.post(`/api/employees/${employee.id}/resend-invitation`);
+      const res = await employeeService.resendInvitation(employee.id);
       setResendResultModal({
         employee,
         previewUrl: res.previewUrl,
@@ -146,8 +163,11 @@ export const EmployeesPage = () => {
 
     try {
       setDeactivating(true);
-      const res = await api.patch(`/api/employees/${employeeToDeactivate.id}/deactivate`);
-      setSuccessMessage(res.message || `El colaborador ${employeeToDeactivate.first_name} ${employeeToDeactivate.last_name} fue dado de baja correctamente.`);
+      const res = await employeeService.deactivate(employeeToDeactivate.id);
+      setSuccessMessage(
+        res.message ||
+          `El colaborador ${employeeToDeactivate.first_name} ${employeeToDeactivate.last_name} fue dado de baja correctamente.`
+      );
       setEmployeeToDeactivate(null);
       setTimeout(() => {
         setSuccessMessage('');
@@ -180,7 +200,7 @@ export const EmployeesPage = () => {
 
     try {
       setSaving(true);
-      await api.put(`/api/employees/${editingEmployee.id}`, editForm);
+      await employeeService.update(editingEmployee.id, editForm);
       setSuccessMessage('Ficha del empleado actualizada correctamente.');
       setEditingEmployee(null);
       setTimeout(() => setSuccessMessage(''), 3500);
@@ -357,8 +377,12 @@ export const EmployeesPage = () => {
                 </tr>
               ) : employees.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
-                    No se encontraron colaboradores con los criterios seleccionados.
+                  <td colSpan={7} className="p-4">
+                    <EmptyState
+                      icon={Users}
+                      title="No se encontraron colaboradores"
+                      description="Intenta ajustando los términos de búsqueda o los filtros aplicados."
+                    />
                   </td>
                 </tr>
               ) : (
@@ -392,13 +416,21 @@ export const EmployeesPage = () => {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1.5 ${emp.department ? 'text-slate-700 font-medium' : 'text-slate-400 italic'}`}>
+                      <span
+                        className={`inline-flex items-center gap-1.5 ${
+                          emp.department ? 'text-slate-700 font-medium' : 'text-slate-400 italic'
+                        }`}
+                      >
                         <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         {emp.department || 'Sin asignar'}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1.5 ${emp.phone ? 'text-slate-700 font-medium' : 'text-slate-400 italic'}`}>
+                      <span
+                        className={`inline-flex items-center gap-1.5 ${
+                          emp.phone ? 'text-slate-700 font-medium' : 'text-slate-400 italic'
+                        }`}
+                      >
                         <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         {emp.phone || 'No registrado'}
                       </span>
@@ -426,7 +458,11 @@ export const EmployeesPage = () => {
                         </span>
                       )}
                     </td>
-                    <td className={`px-4 py-3 ${emp.hire_date ? 'text-slate-700 font-medium' : 'text-slate-400 italic'}`}>
+                    <td
+                      className={`px-4 py-3 ${
+                        emp.hire_date ? 'text-slate-700 font-medium' : 'text-slate-400 italic'
+                      }`}
+                    >
                       {formatDate(emp.hire_date)}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -440,7 +476,9 @@ export const EmployeesPage = () => {
                             className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-md transition-colors disabled:opacity-50"
                           >
                             <Mail className="w-3.5 h-3.5 text-amber-600" />
-                            <span>{resendingId === emp.id ? 'Reenviando...' : 'Reenviar acceso'}</span>
+                            <span>
+                              {resendingId === emp.id ? 'Reenviando...' : 'Reenviar acceso'}
+                            </span>
                           </button>
                         )}
                         <button
@@ -476,411 +514,362 @@ export const EmployeesPage = () => {
       </div>
 
       {/* Modal: Editar Ficha de Empleado */}
-      {editingEmployee && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 border border-slate-200 shadow-2xl relative">
-            <button
-              onClick={() => setEditingEmployee(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-              aria-label="Cerrar modal"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <h3 className="text-base font-bold text-slate-900">
-              Editar Ficha de Personal
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              Modifica la información laboral de {editingEmployee.first_name} {editingEmployee.last_name}.
-            </p>
-
-            <form onSubmit={handleSaveEmployee} className="mt-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Nombre</label>
-                  <input
-                    type="text"
-                    value={editForm.first_name}
-                    onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
-                    required
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Apellido</label>
-                  <input
-                    type="text"
-                    value={editForm.last_name}
-                    onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
-                    required
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Documento (DNI/Cédula)</label>
-                  <input
-                    type="text"
-                    placeholder="Ej: 38123456"
-                    value={editForm.document_number}
-                    onChange={(e) => setEditForm({ ...editForm, document_number: e.target.value })}
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Número de Legajo</label>
-                  <input
-                    type="text"
-                    placeholder="Ej: 1042"
-                    value={editForm.file_number}
-                    onChange={(e) => setEditForm({ ...editForm, file_number: e.target.value })}
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Departamento</label>
-                <input
-                  type="text"
-                  placeholder="Ej: Desarrollo, Operaciones, Finanzas"
-                  value={editForm.department}
-                  onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Teléfono</label>
-                <input
-                  type="text"
-                  placeholder="+54 11 4455-6677"
-                  value={editForm.phone}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Fecha de contratación</label>
-                <input
-                  type="date"
-                  value={editForm.hire_date}
-                  onChange={(e) => setEditForm({ ...editForm, hire_date: e.target.value })}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Rol de seguridad</label>
-                <select
-                  value={editForm.role_id}
-                  onChange={(e) => setEditForm({ ...editForm, role_id: parseInt(e.target.value, 10) })}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none bg-white text-slate-800"
-                >
-                  <option value={4}>Empleado Regular</option>
-                  <option value={3}>Líder de Área / Manager</option>
-                  <option value={2}>Recursos Humanos</option>
-                  <option value={1}>Administrador</option>
-                </select>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setEditingEmployee(null)}
-                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
-                >
-                  {saving ? 'Guardando...' : 'Guardar cambios'}
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={Boolean(editingEmployee)}
+        onClose={() => setEditingEmployee(null)}
+        title="Editar Ficha de Personal"
+        subtitle={
+          editingEmployee
+            ? `Modifica la información laboral de ${editingEmployee.first_name} ${editingEmployee.last_name}.`
+            : ''
+        }
+        icon={Edit3}
+        preventClose={saving}
+      >
+        <form onSubmit={handleSaveEmployee} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Nombre</label>
+              <input
+                type="text"
+                value={editForm.first_name}
+                onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
+                required
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Apellido</label>
+              <input
+                type="text"
+                value={editForm.last_name}
+                onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
+                required
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+              />
+            </div>
           </div>
-        </div>
-      )}
-      {/* Modal: Alta de Nuevo Empleado */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 border border-slate-200 shadow-2xl relative">
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Documento (DNI/Cédula)
+              </label>
+              <input
+                type="text"
+                placeholder="Ej: 38123456"
+                value={editForm.document_number}
+                onChange={(e) => setEditForm({ ...editForm, document_number: e.target.value })}
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Número de Legajo
+              </label>
+              <input
+                type="text"
+                placeholder="Ej: 1042"
+                value={editForm.file_number}
+                onChange={(e) => setEditForm({ ...editForm, file_number: e.target.value })}
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Departamento</label>
+            <input
+              type="text"
+              placeholder="Ej: Desarrollo, Operaciones, Finanzas"
+              value={editForm.department}
+              onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
+              className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Teléfono</label>
+            <input
+              type="text"
+              placeholder="+54 11 4455-6677"
+              value={editForm.phone}
+              onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+              className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Fecha de contratación
+            </label>
+            <input
+              type="date"
+              value={editForm.hire_date}
+              onChange={(e) => setEditForm({ ...editForm, hire_date: e.target.value })}
+              className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Rol de seguridad
+            </label>
+            <select
+              value={editForm.role_id}
+              onChange={(e) =>
+                setEditForm({ ...editForm, role_id: parseInt(e.target.value, 10) })
+              }
+              className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none bg-white text-slate-800"
+            >
+              <option value={4}>Empleado Regular</option>
+              <option value={3}>Líder de Área / Manager</option>
+              <option value={2}>Recursos Humanos</option>
+              <option value={1}>Administrador</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3">
             <button
+              type="button"
+              onClick={() => setEditingEmployee(null)}
+              className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+            >
+              {saving ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal: Alta de Nuevo Empleado */}
+      <Modal
+        isOpen={isCreateModalOpen}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setCreateError('');
+        }}
+        title="Alta de Nuevo Empleado"
+        subtitle="Ingresa los datos para registrar e invitar al nuevo colaborador al sistema HRMS."
+        icon={UserPlus}
+        preventClose={creating}
+      >
+        {createError && (
+          <div className="mb-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+            <span>{createError}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleCreateEmployee} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Nombre</label>
+              <input
+                type="text"
+                placeholder="Juan"
+                value={createForm.first_name}
+                onChange={(e) => setCreateForm({ ...createForm, first_name: e.target.value })}
+                required
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Apellido</label>
+              <input
+                type="text"
+                placeholder="Pérez"
+                value={createForm.last_name}
+                onChange={(e) => setCreateForm({ ...createForm, last_name: e.target.value })}
+                required
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Número de Documento <span className="font-normal text-slate-400">(opcional)</span>
+              </label>
+              <input
+                type="text"
+                placeholder="Ej: 38123456"
+                value={createForm.document_number}
+                onChange={(e) =>
+                  setCreateForm({ ...createForm, document_number: e.target.value })
+                }
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Número de Legajo <span className="font-normal text-slate-400">(opcional)</span>
+              </label>
+              <input
+                type="text"
+                placeholder="Ej: 1042"
+                value={createForm.file_number}
+                onChange={(e) => setCreateForm({ ...createForm, file_number: e.target.value })}
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Correo Electrónico</label>
+            <div className="relative">
+              <input
+                type="email"
+                placeholder="empleado@empresa.com"
+                value={createForm.email}
+                onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                required
+                className="w-full px-3 py-1.5 pl-8 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+              />
+              <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Rol en el sistema</label>
+            <select
+              value={createForm.role_id}
+              onChange={(e) =>
+                setCreateForm({ ...createForm, role_id: parseInt(e.target.value, 10) })
+              }
+              className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none bg-white text-slate-800"
+            >
+              <option value={4}>Empleado Regular</option>
+              <option value={3}>Líder de Área / Manager</option>
+              <option value={2}>Recursos Humanos</option>
+              <option value={1}>Administrador</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3">
+            <button
+              type="button"
               onClick={() => {
                 setIsCreateModalOpen(false);
                 setCreateError('');
               }}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-              aria-label="Cerrar modal"
+              className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
             >
-              <X className="w-5 h-5" />
+              Cancelar
             </button>
-
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                <UserPlus className="w-4 h-4" />
-              </div>
-              <h3 className="text-base font-bold text-slate-900">
-                Alta de Nuevo Empleado
-              </h3>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Ingresa los datos para registrar e invitar al nuevo colaborador al sistema HRMS.
-            </p>
-
-            {createError && (
-              <div className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{createError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleCreateEmployee} className="mt-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Nombre</label>
-                  <input
-                    type="text"
-                    placeholder="Juan"
-                    value={createForm.first_name}
-                    onChange={(e) => setCreateForm({ ...createForm, first_name: e.target.value })}
-                    required
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Apellido</label>
-                  <input
-                    type="text"
-                    placeholder="Pérez"
-                    value={createForm.last_name}
-                    onChange={(e) => setCreateForm({ ...createForm, last_name: e.target.value })}
-                    required
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Número de Documento <span className="font-normal text-slate-400">(opcional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: 38123456"
-                    value={createForm.document_number}
-                    onChange={(e) => setCreateForm({ ...createForm, document_number: e.target.value })}
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Número de Legajo <span className="font-normal text-slate-400">(opcional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: 1042"
-                    value={createForm.file_number}
-                    onChange={(e) => setCreateForm({ ...createForm, file_number: e.target.value })}
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Correo Electrónico</label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    placeholder="empleado@empresa.com"
-                    value={createForm.email}
-                    onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-                    required
-                    className="w-full px-3 py-1.5 pl-8 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                  />
-                  <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Rol en el sistema</label>
-                <select
-                  value={createForm.role_id}
-                  onChange={(e) => setCreateForm({ ...createForm, role_id: parseInt(e.target.value, 10) })}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none bg-white text-slate-800"
-                >
-                  <option value={4}>Empleado Regular</option>
-                  <option value={3}>Líder de Área / Manager</option>
-                  <option value={2}>Recursos Humanos</option>
-                  <option value={1}>Administrador</option>
-                </select>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsCreateModalOpen(false);
-                    setCreateError('');
-                  }}
-                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg disabled:opacity-50 inline-flex items-center gap-1.5"
-                >
-                  {creating ? 'Registrando...' : 'Dar de alta y enviar invitación'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-      {/* Modal Persistente: Enlace de Activación Generado (sin temporizador ni auto-cierre) */}
-      {resendResultModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 border border-slate-200 shadow-2xl relative">
             <button
-              onClick={() => setResendResultModal(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-              aria-label="Cerrar modal"
+              type="submit"
+              disabled={creating}
+              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg disabled:opacity-50 inline-flex items-center gap-1.5"
             >
-              <X className="w-5 h-5" />
+              {creating ? 'Registrando...' : 'Dar de alta y enviar invitación'}
             </button>
-
-            <div className="flex items-center gap-2.5 mb-2">
-              <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                <Mail className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Enlace de activación generado
-                </h3>
-                <span className="text-[11px] text-slate-400 font-medium">
-                  {resendResultModal.employee?.email}
-                </span>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-600 mt-2 leading-relaxed">
-              Se ha emitido un nuevo enlace de acceso para{' '}
-              <strong className="text-slate-800">
-                {resendResultModal.employee?.first_name} {resendResultModal.employee?.last_name}
-              </strong>
-              . En entorno local puedes acceder a la previsualización del correo:
-            </p>
-
-            {resendResultModal.previewUrl ? (
-              <div className="mt-4 p-3.5 rounded-lg bg-blue-50/80 border border-blue-200/80">
-                <div className="text-[11px] font-semibold text-blue-900 mb-1.5 flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Bandeja de prueba Ethereal:</span>
-                </div>
-                <a
-                  href={resendResultModal.previewUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors w-full justify-center"
-                >
-                  <span>Abrir previsualización del correo</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              </div>
-            ) : (
-              <div className="mt-4 p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-500">
-                El correo fue procesado por el servidor.
-              </div>
-            )}
-
-            <div className="mt-6 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setResendResultModal(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
-              >
-                Cerrar
-              </button>
-            </div>
           </div>
+        </form>
+      </Modal>
+
+      {/* Modal Persistente: Enlace de Activación Generado */}
+      <Modal
+        isOpen={Boolean(resendResultModal)}
+        onClose={() => setResendResultModal(null)}
+        title="Enlace de activación generado"
+        subtitle={resendResultModal?.employee?.email || ''}
+        icon={Mail}
+      >
+        <p className="text-xs text-slate-600 leading-relaxed">
+          Se ha emitido un nuevo enlace de acceso para{' '}
+          <strong className="text-slate-800">
+            {resendResultModal?.employee?.first_name} {resendResultModal?.employee?.last_name}
+          </strong>
+          . En entorno local puedes acceder a la previsualización del correo:
+        </p>
+
+        {resendResultModal?.previewUrl ? (
+          <div className="mt-4 p-3.5 rounded-lg bg-blue-50/80 border border-blue-200/80">
+            <div className="text-[11px] font-semibold text-blue-900 mb-1.5 flex items-center gap-1.5">
+              <Mail className="w-3.5 h-3.5 text-blue-600" />
+              <span>Bandeja de prueba Ethereal:</span>
+            </div>
+            <a
+              href={resendResultModal.previewUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors w-full justify-center"
+            >
+              <span>Abrir previsualización del correo</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        ) : (
+          <div className="mt-4 p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-500">
+            El correo fue procesado por el servidor.
+          </div>
+        )}
+
+        <div className="mt-6 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setResendResultModal(null)}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
+          >
+            Cerrar
+          </button>
         </div>
-      )}
+      </Modal>
 
       {/* Modal: Confirmar Baja de Empleado */}
-      {employeeToDeactivate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 border border-slate-200 shadow-2xl relative">
-            <button
-              onClick={() => {
-                if (!deactivating) setEmployeeToDeactivate(null);
-              }}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 disabled:opacity-50"
-              disabled={deactivating}
-              aria-label="Cerrar modal"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      <Modal
+        isOpen={Boolean(employeeToDeactivate)}
+        onClose={() => {
+          if (!deactivating) setEmployeeToDeactivate(null);
+        }}
+        title="Confirmar Baja de Empleado"
+        subtitle="Desactivación lógica de colaborador"
+        icon={UserX}
+        preventClose={deactivating}
+      >
+        <p className="text-xs text-slate-600 leading-relaxed">
+          ¿Estás seguro de que deseas dar de baja a{' '}
+          <strong className="text-slate-900">
+            {employeeToDeactivate?.first_name} {employeeToDeactivate?.last_name}
+          </strong>
+          ? El usuario perderá el acceso al sistema inmediatamente pero se preservará su historial.
+        </p>
 
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                <UserX className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Confirmar Baja de Empleado
-                </h3>
-                <span className="text-[11px] text-slate-400 font-medium">
-                  Desactivación lógica de colaborador
-                </span>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-600 mt-2 leading-relaxed">
-              ¿Estás seguro de que deseas dar de baja a{' '}
-              <strong className="text-slate-900">
-                {employeeToDeactivate.first_name} {employeeToDeactivate.last_name}
-              </strong>
-              ? El usuario perderá el acceso al sistema inmediatamente pero se preservará su historial.
-            </p>
-
-            {deactivateError && (
-              <div className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <span>{deactivateError}</span>
-              </div>
-            )}
-
-            <div className="mt-6 flex justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => setEmployeeToDeactivate(null)}
-                disabled={deactivating}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDeactivate}
-                disabled={deactivating}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors disabled:opacity-50"
-              >
-                <UserX className="w-3.5 h-3.5" />
-                <span>{deactivating ? 'Procesando...' : 'Confirmar Baja'}</span>
-              </button>
-            </div>
+        {deactivateError && (
+          <div className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <span>{deactivateError}</span>
           </div>
+        )}
+
+        <div className="mt-6 flex justify-end gap-2.5">
+          <button
+            type="button"
+            onClick={() => setEmployeeToDeactivate(null)}
+            disabled={deactivating}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirmDeactivate}
+            disabled={deactivating}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors disabled:opacity-50"
+          >
+            <UserX className="w-3.5 h-3.5" />
+            <span>{deactivating ? 'Procesando...' : 'Confirmar Baja'}</span>
+          </button>
         </div>
-      )}
+      </Modal>
     </div>
   );
 };

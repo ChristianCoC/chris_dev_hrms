@@ -1,4 +1,5 @@
 import { query } from '../config/db.js';
+import { getClientIp } from '../utils/requestUtils.js';
 
 /**
  * Registra una acción relevante en la tabla audit_logs
@@ -44,6 +45,21 @@ export const logAuditEvent = async ({
     console.error('⚠️ Error al registrar log de auditoría:', error.message);
     return null;
   }
+};
+
+/**
+ * Helper para registrar evento de auditoría extrayendo automáticamente el userId y la IP desde el objeto req.
+ */
+export const logAuditFromRequest = async (req, { action, entityType, entityId, oldValues = null, newValues = null }) => {
+  return logAuditEvent({
+    userId: req?.user?.id,
+    action,
+    entityType,
+    entityId,
+    oldValues,
+    newValues,
+    ipAddress: getClientIp(req),
+  });
 };
 
 /**

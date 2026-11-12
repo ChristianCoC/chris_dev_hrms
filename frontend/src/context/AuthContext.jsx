@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import api from '../api/client.js';
+import { authService } from '../services/index.js';
 
 const AuthContext = createContext(null);
 
@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }) => {
       const storedToken = localStorage.getItem('hrms_token');
       if (storedToken) {
         try {
-          const res = await api.get('/api/users/profile');
+          const res = await authService.getProfile();
           if (res.user) {
             setUser((prev) => ({ ...prev, ...res.user }));
             localStorage.setItem('hrms_user', JSON.stringify(res.user));
@@ -44,7 +44,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password) => {
-    const res = await api.post('/api/auth/login', { email, password });
+    const res = await authService.login(email, password);
     if (res.token && res.user) {
       setToken(res.token);
       setUser(res.user);

@@ -1,5 +1,5 @@
 import { query } from "../config/db.js";
-import { logAuditEvent } from "../services/auditService.js";
+import { logAuditFromRequest } from "../services/auditService.js";
 
 const VALID_REQUEST_TYPES = [
   "indumentaria",
@@ -61,9 +61,7 @@ export const createRequest = async (req, res) => {
     const newRequest = result.rows[0];
 
     // Registrar evento de auditoría
-    const ipAddress = req.headers?.["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || null;
-    await logAuditEvent({
-      userId,
+    await logAuditFromRequest(req, {
       action: "REQUEST_CREATED",
       entityType: "requests",
       entityId: String(newRequest.id),
@@ -72,7 +70,6 @@ export const createRequest = async (req, res) => {
         title: newRequest.title,
         status: newRequest.status,
       },
-      ipAddress,
     });
 
     return res.status(201).json({
@@ -88,7 +85,6 @@ export const createRequest = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al procesar la solicitud.",
-      error: error.message,
     });
   }
 };
@@ -140,7 +136,6 @@ export const getMyRequests = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al obtener tus solicitudes.",
-      error: error.message,
     });
   }
 };
@@ -218,7 +213,6 @@ export const getAllRequests = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al obtener el listado de solicitudes.",
-      error: error.message,
     });
   }
 };
@@ -302,9 +296,7 @@ export const updateRequestStatus = async (req, res) => {
     }
 
     // Registrar evento de auditoría
-    const ipAddress = req.headers?.["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || null;
-    await logAuditEvent({
-      userId: resolvedById,
+    await logAuditFromRequest(req, {
       action: "REQUEST_RESOLVED",
       entityType: "requests",
       entityId: String(id),
@@ -315,7 +307,6 @@ export const updateRequestStatus = async (req, res) => {
         status: normalizedStatus,
         resolution_notes: trimmedNotes,
       },
-      ipAddress,
     });
 
     return res.status(200).json({
@@ -331,7 +322,6 @@ export const updateRequestStatus = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al actualizar la solicitud.",
-      error: error.message,
     });
   }
 };

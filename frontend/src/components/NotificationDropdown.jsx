@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, CheckCheck } from 'lucide-react';
-import api from '../api/client.js';
+import { notificationService } from '../services/notificationService.js';
 
 export const NotificationDropdown = () => {
   const [notifications, setNotifications] = useState([]);
@@ -11,7 +11,7 @@ export const NotificationDropdown = () => {
   const fetchNotifications = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/api/notifications');
+      const res = await notificationService.getMy();
       if (res.data?.notifications) {
         setNotifications(res.data.notifications);
       }
@@ -43,7 +43,7 @@ export const NotificationDropdown = () => {
   const markAsRead = async (id, e) => {
     e.stopPropagation();
     try {
-      await api.patch(`/api/notifications/${id}/read`);
+      await notificationService.markAsRead(id);
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
       );

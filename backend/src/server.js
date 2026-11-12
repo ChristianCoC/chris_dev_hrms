@@ -9,6 +9,7 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import employeeRoutes from './routes/employeeRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import requestRoutes from './routes/requestRoutes.js';
+import errorHandler from './middlewares/errorHandler.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -109,18 +110,9 @@ app.use((req, res) => {
 });
 
 /**
- * Manejo global de errores
+ * Manejo global de errores (Middleware centralizado)
  */
-app.use((err, req, res, next) => {
-  console.error('❌ Error global:', err.message);
-  
-  res.status(err.status || 500).json({
-    status: 'error',
-    message: err.message || 'Internal Server Error',
-    getArgentinaDateTime: getArgentinaDateTime(),
-    ...(NODE_ENV === 'development' && { stack: err.stack }),
-  });
-});
+app.use(errorHandler);
 
 /**
  * Iniciar servidor

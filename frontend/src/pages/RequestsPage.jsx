@@ -3,23 +3,16 @@ import {
   ClipboardList,
   Plus,
   Search,
-  Filter,
   CheckCircle2,
   XCircle,
-  Clock,
-  Building2,
-  User,
-  X,
   AlertCircle,
   FileText,
-  Tag,
-  Check,
-  Calendar,
-  MessageSquare,
 } from 'lucide-react';
-import api from '../api/client.js';
+import { requestService } from '../services/requestService.js';
 import { useAuth } from '../context/AuthContext.jsx';
-import { StatusBadge } from '../components/StatusBadge.jsx';
+import { StatusBadge } from '../components/ui/StatusBadge.jsx';
+import { Modal } from '../components/ui/Modal.jsx';
+import { EmptyState } from '../components/ui/EmptyState.jsx';
 
 const REQUEST_TYPE_LABELS = {
   indumentaria: 'Indumentaria',
@@ -38,7 +31,7 @@ const REQUEST_TYPE_STYLES = {
 };
 
 export const RequestsPage = () => {
-  const { user, isAdminOrHR } = useAuth();
+  const { isAdminOrHR } = useAuth();
 
   // Tab para Admin/RRHH: 'all' (Todas las solicitudes) o 'my' (Mis solicitudes)
   const [activeTab, setActiveTab] = useState(isAdminOrHR ? 'all' : 'my');
@@ -75,18 +68,17 @@ export const RequestsPage = () => {
       setLoading(true);
       setError('');
 
-      let endpoint = '';
+      let res;
       if (isAdminOrHR && activeTab === 'all') {
-        const params = new URLSearchParams();
-        if (search.trim()) params.append('search', search.trim());
-        if (typeFilter !== 'all') params.append('type', typeFilter);
-        if (statusFilter !== 'all') params.append('status', statusFilter);
-        endpoint = `/api/requests?${params.toString()}`;
+        res = await requestService.getAll({
+          search: search.trim() || undefined,
+          type: typeFilter !== 'all' ? typeFilter : undefined,
+          status: statusFilter !== 'all' ? statusFilter : undefined,
+        });
       } else {
-        endpoint = '/api/requests/my';
+        res = await requestService.getMy();
       }
 
-      const res = await api.get(endpoint);
       const rawList = res?.data?.requests || res?.requests || (Array.isArray(res) ? res : []);
       setRequests(Array.isArray(rawList) ? rawList : []);
     } catch (err) {
@@ -115,7 +107,7 @@ export const RequestsPage = () => {
 
     try {
       setCreating(true);
-      await api.post('/api/requests', {
+      await requestService.create({
         type: createForm.type,
         title: createForm.title.trim(),
         description: createForm.description.trim(),
@@ -152,7 +144,7 @@ export const RequestsPage = () => {
 
     try {
       setResolving(true);
-      await api.patch(`/api/requests/${requestToReview.id}/status`, {
+      await requestService.updateStatus(requestToReview.id, {
         status: reviewStatus,
         resolution_notes: resolutionNotes.trim() || null,
       });
@@ -184,7 +176,7 @@ export const RequestsPage = () => {
 
   // Filtrado local para la pestaña 'Mis Solicitudes'
   const displayedRequests = requests.filter((req) => {
-    if (activeTab === 'all') return true; // El backend ya filtra en 'all'
+    if (activeTab === 'all') return true;
     if (typeFilter !== 'all' && req.type !== typeFilter) return false;
     if (statusFilter !== 'all' && req.status !== statusFilter) return false;
     if (search.trim()) {
@@ -317,10 +309,12 @@ export const RequestsPage = () => {
         ) : error ? (
           <div className="py-12 text-center text-xs text-rose-600">{error}</div>
         ) : displayedRequests.length === 0 ? (
-          <div className="py-16 text-center text-xs text-slate-400">
-            <ClipboardList className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-            No se encontraron solicitudes con los criterios seleccionados.
-          </div>
+          <EmptyState
+            icon={ClipboardList}
+            title="No se encontraron solicitudes"
+            description="No se registran solicitudes que coincidan con los criterios seleccionados."
+            className="py-16"
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-600 border-collapse">
@@ -447,132 +441,111 @@ export const RequestsPage = () => {
       </div>
 
       {/* Modal: Nueva Solicitud */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 border border-slate-200 shadow-2xl relative">
-            <button
-              onClick={() => setIsCreateModalOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-              aria-label="Cerrar modal"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-2.5 mb-2">
-              <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                <ClipboardList className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Registrar Nueva Solicitud
-                </h3>
-                <span className="text-[11px] text-slate-400 font-medium">
-                  Petición operativa dirigida a Administración y RRHH
-                </span>
-              </div>
-            </div>
-
-            <form onSubmit={handleCreateRequest} className="mt-4 space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Tipo de Solicitud
-                </label>
-                <select
-                  value={createForm.type}
-                  onChange={(e) => setCreateForm({ ...createForm, type: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-                >
-                  <option value="indumentaria">Indumentaria (Uniformes, Calzado, EPP)</option>
-                  <option value="licencia">Licencia (Estudio, Médica, Vacaciones)</option>
-                  <option value="materiales">Materiales (Papelería, Insumos de oficina)</option>
-                  <option value="herramientas">Herramientas (Dispositivos, Hardware, Accesos)</option>
-                  <option value="otro">Otro requerimiento operativo</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Asunto / Título
-                </label>
-                <input
-                  type="text"
-                  maxLength={150}
-                  placeholder="Ej. Solicitud de botas de seguridad talle 42"
-                  value={createForm.title}
-                  onChange={(e) => setCreateForm({ ...createForm, title: e.target.value })}
-                  required
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Descripción Detallada
-                </label>
-                <textarea
-                  rows={4}
-                  placeholder="Especifica los detalles de tu necesidad, justificación o especificaciones técnicas..."
-                  value={createForm.description}
-                  onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
-                  required
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-600 focus:outline-none resize-none"
-                />
-              </div>
-
-              {createError && (
-                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  <span>{createError}</span>
-                </div>
-              )}
-
-              <div className="mt-5 flex justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50"
-                >
-                  {creating ? 'Enviando...' : 'Enviar Solicitud'}
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        title="Registrar Nueva Solicitud"
+        subtitle="Petición operativa dirigida a Administración y RRHH"
+        icon={
+          <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <ClipboardList className="w-5 h-5" />
           </div>
-        </div>
-      )}
+        }
+        preventClose={creating}
+      >
+        <form onSubmit={handleCreateRequest} className="mt-2 space-y-3.5">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Tipo de Solicitud
+            </label>
+            <select
+              value={createForm.type}
+              onChange={(e) => setCreateForm({ ...createForm, type: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+            >
+              <option value="indumentaria">Indumentaria (Uniformes, Calzado, EPP)</option>
+              <option value="licencia">Licencia (Estudio, Médica, Vacaciones)</option>
+              <option value="materiales">Materiales (Papelería, Insumos de oficina)</option>
+              <option value="herramientas">Herramientas (Dispositivos, Hardware, Accesos)</option>
+              <option value="otro">Otro requerimiento operativo</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Asunto / Título
+            </label>
+            <input
+              type="text"
+              maxLength={150}
+              placeholder="Ej. Solicitud de botas de seguridad talle 42"
+              value={createForm.title}
+              onChange={(e) => setCreateForm({ ...createForm, title: e.target.value })}
+              required
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Descripción Detallada
+            </label>
+            <textarea
+              rows={4}
+              placeholder="Especifica los detalles de tu necesidad, justificación o especificaciones técnicas..."
+              value={createForm.description}
+              onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
+              required
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-600 focus:outline-none resize-none"
+            />
+          </div>
+
+          {createError && (
+            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span>{createError}</span>
+            </div>
+          )}
+
+          <div className="mt-5 flex justify-end gap-2.5">
+            <button
+              type="button"
+              onClick={() => setIsCreateModalOpen(false)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={creating}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50"
+            >
+              {creating ? 'Enviando...' : 'Enviar Solicitud'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Modal: Revisar Solicitud (Aprobar / Rechazar) */}
-      {requestToReview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl relative">
-            <button
-              onClick={() => setRequestToReview(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-              aria-label="Cerrar modal"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                <FileText className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Revisión de Solicitud #{requestToReview.id}
-                </h3>
-                <span className="text-[11px] text-slate-400 font-medium">
-                  Solicitante: {requestToReview.first_name} {requestToReview.last_name}
-                </span>
-              </div>
-            </div>
-
+      <Modal
+        isOpen={!!requestToReview}
+        onClose={() => setRequestToReview(null)}
+        title={requestToReview ? `Revisión de Solicitud #${requestToReview.id}` : ''}
+        subtitle={
+          requestToReview
+            ? `Solicitante: ${requestToReview.first_name} ${requestToReview.last_name}`
+            : ''
+        }
+        icon={
+          <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <FileText className="w-5 h-5" />
+          </div>
+        }
+        maxWidth="max-w-lg"
+        preventClose={resolving}
+      >
+        {requestToReview && (
+          <div>
             {/* Ficha Resumida */}
             <div className="bg-slate-50 rounded-lg p-3.5 border border-slate-200 space-y-2 mb-4 text-xs">
               <div className="flex items-center justify-between">
@@ -717,8 +690,8 @@ export const RequestsPage = () => {
               </form>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 };

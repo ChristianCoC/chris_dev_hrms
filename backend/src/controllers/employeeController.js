@@ -1,5 +1,5 @@
 import { query } from "../config/db.js";
-import { logAuditEvent } from "../services/auditService.js";
+import { logAuditFromRequest } from "../services/auditService.js";
 
 /**
  * Obtener lista de empleados con filtros opcionales (búsqueda, departamento, rol)
@@ -74,7 +74,6 @@ export const getEmployees = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al obtener la lista de empleados.",
-      error: error.message,
     });
   }
 };
@@ -126,7 +125,6 @@ export const getEmployeeStats = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al obtener estadísticas de empleados.",
-      error: error.message,
     });
   }
 };
@@ -194,7 +192,6 @@ export const getEmployeeById = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al obtener detalle del empleado.",
-      error: error.message,
     });
   }
 };
@@ -302,15 +299,12 @@ export const updateEmployeeHR = async (req, res) => {
     const updatedEmployee = result.rows[0];
 
     // Registrar evento de auditoría
-    const ipAddress = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || null;
-    await logAuditEvent({
-      userId: req.user.id,
+    await logAuditFromRequest(req, {
       action: "EMPLOYEE_UPDATED",
       entityType: "employees",
       entityId: id,
       oldValues: currentData,
       newValues: updatedEmployee,
-      ipAddress,
     });
 
     return res.status(200).json({
@@ -325,7 +319,6 @@ export const updateEmployeeHR = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al actualizar datos del empleado.",
-      error: error.message,
     });
   }
 };
@@ -380,9 +373,7 @@ export const deactivateEmployee = async (req, res) => {
     const deactivatedUser = updateResult.rows[0];
 
     // Registrar en audit_logs
-    const ipAddress = req.headers?.["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || null;
-    await logAuditEvent({
-      userId: req.user.id,
+    await logAuditFromRequest(req, {
       action: "EMPLOYEE_DEACTIVATED_BY_ADMIN",
       entityType: "users",
       entityId: id,
@@ -393,7 +384,6 @@ export const deactivateEmployee = async (req, res) => {
         is_active: false,
         deactivation_date: deactivatedUser.deactivation_date,
       },
-      ipAddress,
     });
 
     return res.status(200).json({
@@ -408,7 +398,6 @@ export const deactivateEmployee = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al procesar la baja del empleado.",
-      error: error.message,
     });
   }
 };

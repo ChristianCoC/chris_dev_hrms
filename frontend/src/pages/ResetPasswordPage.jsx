@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Lock, AlertCircle, CheckCircle2, ArrowRight, ShieldCheck, Eye, EyeOff } from 'lucide-react';
-import api from '../api/client.js';
+import { authService } from '../services/index.js';
 
 export const ResetPasswordPage = () => {
   const [searchParams] = useSearchParams();
@@ -43,10 +43,7 @@ export const ResetPasswordPage = () => {
 
     try {
       setLoading(true);
-      await api.post('/api/auth/reset-password', {
-        token,
-        password,
-      });
+      await authService.resetPassword(token, password);
 
       setSuccess(true);
       setTimeout(() => {

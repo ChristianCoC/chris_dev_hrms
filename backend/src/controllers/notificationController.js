@@ -24,7 +24,6 @@ export const getMyNotifications = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al obtener las notificaciones.",
-      error: error.message,
     });
   }
 };
@@ -58,7 +57,6 @@ export const markAsRead = async (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Error interno al marcar la notificación como leída.",
-      error: error.message,
     });
   }
 };

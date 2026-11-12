@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, AlertCircle, CheckCircle2, ArrowLeft, ExternalLink } from 'lucide-react';
-import api from '../api/client.js';
+import { authService } from '../services/index.js';
 
 export const ForgotPasswordPage = () => {
   const [email, setEmail] = useState('');
@@ -21,7 +21,7 @@ export const ForgotPasswordPage = () => {
 
     try {
       setLoading(true);
-      const res = await api.post('/api/auth/forgot-password', { email });
+      const res = await authService.forgotPassword(email);
       setSuccess(true);
       if (res.previewUrl) {
         setPreviewUrl(res.previewUrl);
