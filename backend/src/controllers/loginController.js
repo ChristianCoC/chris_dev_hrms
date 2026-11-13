@@ -31,7 +31,7 @@ export const loginUser = async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
 
     const result = await query(
-      'SELECT id, email, password, role_id, first_name, last_name, is_active, deactivation_date, reset_token FROM users WHERE email = $1',
+      'SELECT id, email, password, role_id, first_name, last_name, document_number, file_number, department, is_active, deactivation_date, reset_token FROM users WHERE email = $1',
       [normalizedEmail]
     );
 
@@ -73,6 +73,9 @@ export const loginUser = async (req, res) => {
         first_name: user.first_name,
         last_name: user.last_name,
         role_id: user.role_id,
+        document_number: user.document_number,
+        file_number: user.file_number,
+        department: user.department,
       },
     });
   } catch (error) {

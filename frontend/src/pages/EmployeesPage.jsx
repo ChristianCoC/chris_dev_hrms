@@ -11,10 +11,23 @@ import {
   ExternalLink,
   UserX,
   Users,
+  ShieldAlert,
+  ShieldCheck,
+  PlusCircle,
+  History,
+  Lock,
 } from 'lucide-react';
 import { useAuth, ROLE_LABELS } from '../context/AuthContext.jsx';
 import { employeeService } from '../services/employeeService.js';
+import { disciplinaryService } from '../services/disciplinaryService.js';
 import { Modal, EmptyState } from '../components/ui/index.js';
+
+const ROLE_HIERARCHY = {
+  1: 1, // Administrador (Rango 1 - Máximo)
+  2: 2, // Recursos Humanos (Rango 2)
+  3: 3, // Líder de Área (Rango 3)
+  4: 4, // Empleado (Rango 4 - Mínimo)
+};
 
 export const EmployeesPage = () => {
   const { user, isAdmin } = useAuth();
@@ -65,6 +78,23 @@ export const EmployeesPage = () => {
   const [employeeToDeactivate, setEmployeeToDeactivate] = useState(null);
   const [deactivating, setDeactivating] = useState(false);
   const [deactivateError, setDeactivateError] = useState('');
+
+  // Modal de Legajo y Sanciones Disciplinarias
+  const [disciplinaryModalEmployee, setDisciplinaryModalEmployee] = useState(null);
+  const [disciplinaryRecords, setDisciplinaryRecords] = useState([]);
+  const [loadingDisciplinary, setLoadingDisciplinary] = useState(false);
+  const [disciplinaryError, setDisciplinaryError] = useState('');
+  const [disciplinarySuccess, setDisciplinarySuccess] = useState('');
+  const [disciplinaryTab, setDisciplinaryTab] = useState('history'); // 'history' | 'new'
+  const [savingDisciplinary, setSavingDisciplinary] = useState(false);
+  const [disciplinaryForm, setDisciplinaryForm] = useState({
+    type: 'llamado_atencion',
+    severity: 'leve',
+    incident_date: new Date().toISOString().split('T')[0],
+    reason: '',
+    description: '',
+    suspension_days: 1,
+  });
 
   const fetchEmployeesAndStats = async () => {
     try {
@@ -220,6 +250,93 @@ export const EmployeesPage = () => {
       month: '2-digit',
       year: 'numeric',
     }).format(date);
+  };
+
+  const loadEmployeeDisciplinary = async (empId) => {
+    try {
+      setLoadingDisciplinary(true);
+      setDisciplinaryError('');
+      const res = await disciplinaryService.getEmployeeDisciplinaryActions(empId);
+      const items = res?.data?.disciplinary_actions || res?.disciplinary_actions || [];
+      setDisciplinaryRecords(Array.isArray(items) ? items : []);
+    } catch (err) {
+      setDisciplinaryError(err.message || 'Error al cargar el historial disciplinario.');
+    } finally {
+      setLoadingDisciplinary(false);
+    }
+  };
+
+  const userLevel = ROLE_HIERARCHY[user?.role_id] || 99;
+  const targetLevel = disciplinaryModalEmployee
+    ? ROLE_HIERARCHY[disciplinaryModalEmployee.role_id] || 99
+    : 99;
+  const isSelfDisciplinary = disciplinaryModalEmployee?.id === user?.id;
+  const canSanction =
+    !isSelfDisciplinary &&
+    (user?.role_id === 1 || user?.role_id === 2) &&
+    userLevel < targetLevel;
+
+  const handleOpenDisciplinaryModal = (emp) => {
+    setDisciplinaryModalEmployee(emp);
+    setDisciplinaryTab('history');
+    setDisciplinaryError('');
+    setDisciplinarySuccess('');
+    setDisciplinaryForm({
+      type: 'llamado_atencion',
+      severity: 'leve',
+      incident_date: new Date().toISOString().split('T')[0],
+      reason: '',
+      description: '',
+      suspension_days: 1,
+    });
+    loadEmployeeDisciplinary(emp.id);
+  };
+
+  const handleCreateDisciplinary = async (e) => {
+    e.preventDefault();
+    if (!disciplinaryModalEmployee) return;
+
+    if (!canSanction) {
+      setDisciplinaryError(
+        'Jerarquía insuficiente. No puedes registrar sanciones sobre un colaborador de igual o mayor rango.'
+      );
+      return;
+    }
+
+    try {
+      setSavingDisciplinary(true);
+      setDisciplinaryError('');
+      setDisciplinarySuccess('');
+
+      await disciplinaryService.createDisciplinaryAction({
+        user_id: disciplinaryModalEmployee.id,
+        type: disciplinaryForm.type,
+        severity: disciplinaryForm.severity,
+        incident_date: disciplinaryForm.incident_date,
+        reason: disciplinaryForm.reason,
+        description: disciplinaryForm.description,
+        suspension_days:
+          disciplinaryForm.type === 'suspension'
+            ? parseInt(disciplinaryForm.suspension_days, 10)
+            : 0,
+      });
+
+      setDisciplinarySuccess('Medida disciplinaria registrada exitosamente con notificación al colaborador.');
+      await loadEmployeeDisciplinary(disciplinaryModalEmployee.id);
+      setDisciplinaryTab('history');
+      setDisciplinaryForm({
+        type: 'llamado_atencion',
+        severity: 'leve',
+        incident_date: new Date().toISOString().split('T')[0],
+        reason: '',
+        description: '',
+        suspension_days: 1,
+      });
+    } catch (err) {
+      setDisciplinaryError(err.message || 'Error al registrar la sanción disciplinaria.');
+    } finally {
+      setSavingDisciplinary(false);
+    }
   };
 
   return (
@@ -481,6 +598,15 @@ export const EmployeesPage = () => {
                             </span>
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDisciplinaryModal(emp)}
+                          title="Legajo y Sanciones"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-amber-700 hover:text-amber-800 hover:bg-amber-50 border border-amber-200 rounded-md transition-colors"
+                        >
+                          <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Legajo</span>
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleOpenEdit(emp)}
@@ -868,6 +994,361 @@ export const EmployeesPage = () => {
             <UserX className="w-3.5 h-3.5" />
             <span>{deactivating ? 'Procesando...' : 'Confirmar Baja'}</span>
           </button>
+        </div>
+      </Modal>
+
+      {/* Modal: Legajo y Sanciones Disciplinarias */}
+      <Modal
+        isOpen={Boolean(disciplinaryModalEmployee)}
+        onClose={() => {
+          if (!savingDisciplinary) setDisciplinaryModalEmployee(null);
+        }}
+        title={`Legajo Disciplinario - ${disciplinaryModalEmployee?.first_name} ${disciplinaryModalEmployee?.last_name}`}
+        subtitle={
+          disciplinaryModalEmployee?.file_number
+            ? `Legajo #${disciplinaryModalEmployee.file_number} • ${disciplinaryModalEmployee.department || 'Sin área asignada'}`
+            : disciplinaryModalEmployee?.department || 'Gestión de novedades y medidas disciplinarias'
+        }
+        icon={ShieldAlert}
+        maxWidth="max-w-2xl"
+        preventClose={savingDisciplinary}
+      >
+        <div className="space-y-4">
+          {/* Tarjeta de Identidad del Colaborador (Nombre, Legajo, DNI y Área del personal) */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0">
+                {disciplinaryModalEmployee?.first_name?.[0]}
+                {disciplinaryModalEmployee?.last_name?.[0]}
+              </div>
+              <div>
+                <p className="font-semibold text-slate-900 text-sm">
+                  {disciplinaryModalEmployee?.first_name} {disciplinaryModalEmployee?.last_name}
+                </p>
+                <div className="flex flex-wrap items-center gap-x-2 text-slate-500 text-[11px] mt-0.5">
+                  <span>
+                    <strong className="text-slate-700 font-semibold">Legajo:</strong>{' '}
+                    {disciplinaryModalEmployee?.file_number ? (
+                      <span className="text-slate-800 font-medium">#{disciplinaryModalEmployee.file_number}</span>
+                    ) : (
+                      <span className="text-slate-400 italic">Sin registrar</span>
+                    )}
+                  </span>
+                  <span>•</span>
+                  <span>
+                    <strong className="text-slate-700 font-semibold">DNI:</strong>{' '}
+                    {disciplinaryModalEmployee?.document_number ? (
+                      <span className="text-slate-800 font-medium">{disciplinaryModalEmployee.document_number}</span>
+                    ) : (
+                      <span className="text-slate-400 italic">Sin registrar</span>
+                    )}
+                  </span>
+                  <span>•</span>
+                  <span>
+                    <strong className="text-slate-700 font-semibold">Área:</strong>{' '}
+                    {disciplinaryModalEmployee?.department || 'Sin asignar'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-white border border-slate-200 text-slate-700 shadow-2xs">
+                {ROLE_LABELS[disciplinaryModalEmployee?.role_id] || disciplinaryModalEmployee?.role_name || 'Empleado'}
+              </span>
+              {canSanction ? (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Habilitado para sancionar
+                </span>
+              ) : (
+                <span
+                  title={
+                    isSelfDisciplinary
+                      ? "No puedes registrar sanciones sobre ti mismo."
+                      : "Jerarquía insuficiente: Sólo un empleado de mayor rango puede emitir sanciones."
+                  }
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                >
+                  <Lock className="w-3 h-3 text-amber-600" />
+                  <span>Solo lectura (Jerarquía)</span>
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Navegación por pestañas */}
+          <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+            <button
+              type="button"
+              onClick={() => setDisciplinaryTab('history')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                disciplinaryTab === 'history'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>Historial ({disciplinaryRecords.length})</span>
+            </button>
+
+            {canSanction ? (
+              <button
+                type="button"
+                onClick={() => setDisciplinaryTab('new')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  disciplinaryTab === 'new'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>Registrar Sanción / Apercibimiento</span>
+              </button>
+            ) : (
+              <div
+                title={
+                  isSelfDisciplinary
+                    ? "No puedes registrar sanciones sobre ti mismo."
+                    : `Jerarquía insuficiente: Un empleado de ${ROLE_LABELS[user?.role_id]} no puede sancionar a un ${ROLE_LABELS[disciplinaryModalEmployee?.role_id]}. Las medidas disciplinarias deben ser emitidas por un empleado de mayor rango.`
+                }
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 bg-slate-100 cursor-not-allowed opacity-80"
+              >
+                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                <span>Registrar Sanción (Bloqueado por jerarquía)</span>
+              </div>
+            )}
+          </div>
+
+          {/* Notificaciones de Éxito o Error */}
+          {disciplinarySuccess && (
+            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{disciplinarySuccess}</span>
+            </div>
+          )}
+
+          {disciplinaryError && (
+            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{disciplinaryError}</span>
+            </div>
+          )}
+
+          {/* Pestaña: Historial Disciplinario */}
+          {disciplinaryTab === 'history' && (
+            <div className="space-y-3">
+              {loadingDisciplinary ? (
+                <div className="py-8 flex flex-col items-center justify-center text-slate-400 text-xs space-y-2">
+                  <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  <span>Cargando expediente...</span>
+                </div>
+              ) : disciplinaryRecords.length === 0 ? (
+                <div className="py-6">
+                  <EmptyState
+                    icon={ShieldCheck}
+                    title="Legajo Limpio"
+                    description="Este colaborador no registra llamados de atención, apercibimientos ni suspensiones en su historial."
+                  />
+                </div>
+              ) : (
+                <div className="max-h-96 overflow-y-auto space-y-3 pr-1">
+                  {disciplinaryRecords.map((item) => {
+                    const typeLabels = {
+                      llamado_atencion: 'Llamado de atención',
+                      apercibimiento: 'Apercibimiento',
+                      suspension: 'Suspensión',
+                      otro: 'Novedad disciplinaria',
+                    };
+                    const severityColors = {
+                      leve: 'bg-amber-50 text-amber-700 border-amber-200',
+                      moderada: 'bg-orange-50 text-orange-700 border-orange-200',
+                      grave: 'bg-rose-50 text-rose-700 border-rose-200',
+                    };
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="p-3.5 rounded-xl border border-slate-200 bg-white shadow-2xs space-y-2 text-xs"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-slate-900">
+                              {typeLabels[item.type] || item.type}
+                            </span>
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                                severityColors[item.severity] || severityColors.leve
+                              }`}
+                            >
+                              Severidad: {item.severity}
+                            </span>
+                            {item.type === 'suspension' && item.suspension_days > 0 && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                                {item.suspension_days} día(s) de suspensión
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-slate-400">
+                            Fecha del hecho: {formatDate(item.incident_date)}
+                          </span>
+                        </div>
+
+                        <div>
+                          <p className="font-medium text-slate-800">{item.reason}</p>
+                          <p className="text-slate-600 mt-1 whitespace-pre-line bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                            {item.description}
+                          </p>
+                        </div>
+
+                        <div className="pt-1 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-100">
+                          <span>
+                            Emitido por:{' '}
+                            <strong className="text-slate-600 font-medium">
+                              {item.issuer_first_name} {item.issuer_last_name}
+                            </strong>{' '}
+                            ({item.issuer_role_name || 'RRHH'})
+                          </span>
+                          <span>{formatDate(item.created_at)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Pestaña: Registrar Nueva Sanción */}
+          {disciplinaryTab === 'new' && (
+            <form onSubmit={handleCreateDisciplinary} className="space-y-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Tipo de Medida
+                  </label>
+                  <select
+                    value={disciplinaryForm.type}
+                    onChange={(e) =>
+                      setDisciplinaryForm({ ...disciplinaryForm, type: e.target.value })
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  >
+                    <option value="llamado_atencion">Llamado de Atención</option>
+                    <option value="apercibimiento">Apercibimiento</option>
+                    <option value="suspension">Suspensión</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Gravedad / Severidad
+                  </label>
+                  <select
+                    value={disciplinaryForm.severity}
+                    onChange={(e) =>
+                      setDisciplinaryForm({ ...disciplinaryForm, severity: e.target.value })
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  >
+                    <option value="leve">Leve (Ámbar)</option>
+                    <option value="moderada">Moderada (Naranja)</option>
+                    <option value="grave">Grave (Rojo)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Fecha del Incidente
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={disciplinaryForm.incident_date}
+                    onChange={(e) =>
+                      setDisciplinaryForm({ ...disciplinaryForm, incident_date: e.target.value })
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  />
+                </div>
+
+                {disciplinaryForm.type === 'suspension' && (
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 text-rose-700">
+                      Días de Suspensión (Mayor a 0) *
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      required
+                      value={disciplinaryForm.suspension_days}
+                      onChange={(e) =>
+                        setDisciplinaryForm({
+                          ...disciplinaryForm,
+                          suspension_days: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 rounded-lg border border-rose-300 bg-rose-50/50 text-rose-900 focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Motivo Resumido (Máx. 200 caracteres) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={200}
+                  placeholder="Ej: Llegada tardía reiterada sin justificación previa"
+                  value={disciplinaryForm.reason}
+                  onChange={(e) =>
+                    setDisciplinaryForm({ ...disciplinaryForm, reason: e.target.value })
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Descripción Detallada del Hecho *
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="Detalla las circunstancias del hecho, normativa infringida o antecedentes pertinentes..."
+                  value={disciplinaryForm.description}
+                  onChange={(e) =>
+                    setDisciplinaryForm({ ...disciplinaryForm, description: e.target.value })
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDisciplinaryTab('history')}
+                  disabled={savingDisciplinary}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingDisciplinary}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg shadow-xs transition-colors disabled:opacity-50"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span>{savingDisciplinary ? 'Registrando...' : 'Registrar en Legajo'}</span>
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </Modal>
     </div>

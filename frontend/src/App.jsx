@@ -11,6 +11,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import ActivateAccountPage from './pages/ActivateAccountPage.jsx';
 import ClaimsPage from './pages/ClaimsPage.jsx';
 import RequestsPage from './pages/RequestsPage.jsx';
+import MyDisciplinaryPage from './pages/MyDisciplinaryPage.jsx';
 import EmployeesPage from './pages/EmployeesPage.jsx';
 import AuditLogsPage from './pages/AuditLogsPage.jsx';
 
@@ -73,6 +74,14 @@ export const App = () => {
           element={
             <AppLayout>
               <RequestsPage />
+            </AppLayout>
+          }
+        />
+        <Route
+          path="/mi-legajo"
+          element={
+            <AppLayout>
+              <MyDisciplinaryPage />
             </AppLayout>
           }
         />

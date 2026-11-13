@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LogOut, Users, FileText, ShieldAlert, User, ClipboardList } from 'lucide-react';
+import { LogOut, Users, FileText, ShieldAlert, User, ClipboardList, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import NotificationDropdown from './NotificationDropdown.jsx';
 
@@ -50,6 +50,11 @@ export const Navbar = () => {
               <NavLink to="/solicitudes" className={navLinkClass}>
                 <ClipboardList className="w-4 h-4 text-indigo-400" />
                 <span>Solicitudes</span>
+              </NavLink>
+
+              <NavLink to="/mi-legajo" className={navLinkClass}>
+                <ShieldCheck className="w-4 h-4 text-teal-400" />
+                <span>Mi Legajo</span>
               </NavLink>
 
               {isAdminOrHR && (
@@ -104,6 +109,11 @@ export const Navbar = () => {
           <NavLink to="/solicitudes" className={navLinkClass}>
             <ClipboardList className="w-4 h-4 text-indigo-400" />
             <span>Solicitudes</span>
+          </NavLink>
+
+          <NavLink to="/mi-legajo" className={navLinkClass}>
+            <ShieldCheck className="w-4 h-4 text-teal-400" />
+            <span>Mi Legajo</span>
           </NavLink>
 
           {isAdminOrHR && (

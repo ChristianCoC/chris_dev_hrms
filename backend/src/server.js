@@ -9,6 +9,7 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import employeeRoutes from './routes/employeeRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import requestRoutes from './routes/requestRoutes.js';
+import disciplinaryRoutes from './routes/disciplinaryRoutes.js';
 import errorHandler from './middlewares/errorHandler.js';
 
 // Cargar variables de entorno
@@ -97,6 +98,7 @@ app.use('/api/claims', claimRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/audit-logs', auditRoutes);
+app.use('/api/disciplinary', disciplinaryRoutes);
 
 /**
  * Manejo de ruta no encontrada (404)

@@ -84,3 +84,16 @@ CREATE TABLE audit_logs (
   ip_address VARCHAR(45),
   timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE disciplinary_actions (
+  id SERIAL PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  issued_by UUID NOT NULL REFERENCES users(id),
+  type VARCHAR(50) NOT NULL CHECK (type IN ('llamado_atencion', 'apercibimiento', 'suspension', 'otro')),
+  severity VARCHAR(20) NOT NULL DEFAULT 'leve' CHECK (severity IN ('leve', 'moderada', 'grave')),
+  incident_date DATE NOT NULL,
+  reason VARCHAR(200) NOT NULL,
+  description TEXT NOT NULL,
+  suspension_days INTEGER DEFAULT 0 CHECK (suspension_days >= 0),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

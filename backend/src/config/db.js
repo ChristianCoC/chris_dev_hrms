@@ -107,6 +107,20 @@ export const testConnection = async () => {
     await pool.query('ALTER TABLE requests ADD COLUMN IF NOT EXISTS attachment_path VARCHAR(500)');
     await pool.query('ALTER TABLE requests ADD COLUMN IF NOT EXISTS attachment_mime VARCHAR(100)');
     await pool.query(`
+      CREATE TABLE IF NOT EXISTS disciplinary_actions (
+        id SERIAL PRIMARY KEY,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        issued_by UUID NOT NULL REFERENCES users(id),
+        type VARCHAR(50) NOT NULL CHECK (type IN ('llamado_atencion', 'apercibimiento', 'suspension', 'otro')),
+        severity VARCHAR(20) NOT NULL DEFAULT 'leve' CHECK (severity IN ('leve', 'moderada', 'grave')),
+        incident_date DATE NOT NULL,
+        reason VARCHAR(200) NOT NULL,
+        description TEXT NOT NULL,
+        suspension_days INTEGER DEFAULT 0 CHECK (suspension_days >= 0),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS requests (
         id SERIAL PRIMARY KEY,
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
