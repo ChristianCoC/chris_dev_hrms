@@ -5,3 +5,5 @@ export { requestService } from './requestService.js';
 export { auditService } from './auditService.js';
 export { notificationService } from './notificationService.js';
 export { disciplinaryService } from './disciplinaryService.js';
+export { shiftService } from './shiftService.js';
+

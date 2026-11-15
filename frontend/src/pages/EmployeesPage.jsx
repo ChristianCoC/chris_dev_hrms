@@ -29,8 +29,41 @@ const ROLE_HIERARCHY = {
   4: 4, // Empleado (Rango 4 - Mínimo)
 };
 
+export const getAssignableRoles = (currentUser) => {
+  const roleId = Number(currentUser?.role_id);
+  if (roleId === 1) {
+    return [
+      { id: 4, name: 'Empleado Regular' },
+      { id: 3, name: 'Líder de Área / Manager' },
+      { id: 2, name: 'Recursos Humanos' },
+      { id: 1, name: 'Administrador' },
+    ];
+  }
+  if (roleId === 2) {
+    return [
+      { id: 4, name: 'Empleado Regular' },
+      { id: 3, name: 'Líder de Área / Manager' },
+    ];
+  }
+  return [];
+};
+
+export const canManageEmployee = (currentUser, targetEmployee) => {
+  if (!currentUser || !targetEmployee) return false;
+  const currentRoleId = Number(currentUser.role_id);
+  const targetRoleId = Number(targetEmployee.role_id);
+
+  if (currentRoleId === 1) {
+    return true;
+  }
+  if (currentRoleId === 2) {
+    return targetRoleId > 2 && String(targetEmployee.id) !== String(currentUser.id);
+  }
+  return false;
+};
+
 export const EmployeesPage = () => {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isAdminOrHR } = useAuth();
   const [employees, setEmployees] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -352,10 +385,18 @@ export const EmployeesPage = () => {
           </p>
         </div>
 
-        {isAdmin && (
+        {isAdminOrHR && (
           <button
             onClick={() => {
               setCreateError('');
+              setCreateForm({
+                first_name: '',
+                last_name: '',
+                email: '',
+                role_id: 4,
+                document_number: '',
+                file_number: '',
+              });
               setIsCreateModalOpen(true);
             }}
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors self-start sm:self-auto"
@@ -584,7 +625,7 @@ export const EmployeesPage = () => {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex items-center justify-end gap-1.5">
-                        {isAdmin && !emp.is_active && emp.is_pending_activation && (
+                        {isAdminOrHR && canManageEmployee(user, emp) && !emp.is_active && emp.is_pending_activation && (
                           <button
                             type="button"
                             onClick={() => handleResendInvitation(emp)}
@@ -607,27 +648,51 @@ export const EmployeesPage = () => {
                           <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
                           <span>Legajo</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(emp)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                          <span>Editar</span>
-                        </button>
-                        {isAdmin && emp.is_active && emp.id !== user?.id && (
+                        {canManageEmployee(user, emp) ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              setDeactivateError('');
-                              setEmployeeToDeactivate(emp);
-                            }}
-                            title="Dar de baja colaborador"
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-md transition-colors"
+                            onClick={() => handleOpenEdit(emp)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
                           >
-                            <UserX className="w-3.5 h-3.5" />
-                            <span>Baja</span>
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Editar</span>
                           </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            title="Rango igual o superior — solo gestión por Administrador"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-slate-400 bg-slate-100 border border-slate-200 rounded-md cursor-not-allowed opacity-60"
+                          >
+                            <Lock className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Editar</span>
+                          </button>
+                        )}
+                        {isAdminOrHR && emp.is_active && emp.id !== user?.id && (
+                          canManageEmployee(user, emp) ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeactivateError('');
+                                setEmployeeToDeactivate(emp);
+                              }}
+                              title="Dar de baja colaborador"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-md transition-colors"
+                            >
+                              <UserX className="w-3.5 h-3.5" />
+                              <span>Baja</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled
+                              title="Rango igual o superior — solo gestión por Administrador"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-slate-400 bg-slate-100 border border-slate-200 rounded-md cursor-not-allowed opacity-60"
+                            >
+                              <Lock className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Baja</span>
+                            </button>
+                          )
                         )}
                       </div>
                     </td>
@@ -748,10 +813,11 @@ export const EmployeesPage = () => {
               }
               className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none bg-white text-slate-800"
             >
-              <option value={4}>Empleado Regular</option>
-              <option value={3}>Líder de Área / Manager</option>
-              <option value={2}>Recursos Humanos</option>
-              <option value={1}>Administrador</option>
+              {getAssignableRoles(user).map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -872,10 +938,11 @@ export const EmployeesPage = () => {
               }
               className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none bg-white text-slate-800"
             >
-              <option value={4}>Empleado Regular</option>
-              <option value={3}>Líder de Área / Manager</option>
-              <option value={2}>Recursos Humanos</option>
-              <option value={1}>Administrador</option>
+              {getAssignableRoles(user).map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
             </select>
           </div>
 

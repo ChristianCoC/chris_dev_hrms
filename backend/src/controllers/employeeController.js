@@ -217,6 +217,32 @@ export const updateEmployeeHR = async (req, res) => {
     }
 
     const currentData = currentEmployeeQuery.rows[0];
+    const requesterRoleId = Number(req.user?.role_id);
+    const targetRoleId = Number(currentData.role_id);
+    const isSelf = String(req.user?.id) === String(id);
+
+    // Regla de Protección sobre Usuarios Objetivo para Recursos Humanos (role_id: 2)
+    if (requesterRoleId === 2) {
+      if (targetRoleId <= 2 || isSelf) {
+        return res.status(403).json({
+          status: "error",
+          message: "No tienes permisos para modificar el perfil, rol o estado de un usuario de igual o mayor jerarquía.",
+        });
+      }
+
+      if (role_id !== undefined && Number(role_id) <= 2) {
+        return res.status(403).json({
+          status: "error",
+          message: "Recursos Humanos solo puede otorgar roles de menor jerarquía (Líder de Área o Empleado).",
+        });
+      }
+    } else if (requesterRoleId !== 1) {
+      return res.status(403).json({
+        status: "error",
+        message: "Acceso denegado. No tienes permisos para actualizar este colaborador.",
+      });
+    }
+
     const fieldsToUpdate = [];
     const valuesToUpdate = [];
     let queryIndex = 1;
@@ -276,8 +302,15 @@ export const updateEmployeeHR = async (req, res) => {
       valuesToUpdate.push(hire_date || null);
     }
     if (role_id !== undefined) {
+      const parsedRoleId = parseInt(role_id, 10);
+      if (![1, 2, 3, 4].includes(parsedRoleId)) {
+        return res.status(400).json({
+          status: "error",
+          message: "role_id no es válido.",
+        });
+      }
       fieldsToUpdate.push(`role_id = $${queryIndex++}`);
-      valuesToUpdate.push(parseInt(role_id, 10));
+      valuesToUpdate.push(parsedRoleId);
     }
 
     if (fieldsToUpdate.length === 0) {
@@ -298,7 +331,7 @@ export const updateEmployeeHR = async (req, res) => {
     const result = await query(updateQuery, valuesToUpdate);
     const updatedEmployee = result.rows[0];
 
-    // Registrar evento de auditoría
+    // Registrar evento de auditoría general
     await logAuditFromRequest(req, {
       action: "EMPLOYEE_UPDATED",
       entityType: "employees",
@@ -306,6 +339,25 @@ export const updateEmployeeHR = async (req, res) => {
       oldValues: currentData,
       newValues: updatedEmployee,
     });
+
+    // Auditoría específica si hubo cambio de rol
+    if (role_id !== undefined && Number(role_id) !== Number(currentData.role_id)) {
+      await logAuditFromRequest(req, {
+        action: "EMPLOYEE_ROLE_UPDATED",
+        entityType: "users",
+        entityId: id,
+        oldValues: {
+          role_id: currentData.role_id,
+        },
+        newValues: {
+          role_id: updatedEmployee.role_id,
+        },
+        details: {
+          previous_role_id: currentData.role_id,
+          new_role_id: updatedEmployee.role_id,
+        },
+      });
+    }
 
     return res.status(200).json({
       status: "success",
@@ -325,13 +377,15 @@ export const updateEmployeeHR = async (req, res) => {
 
 /**
  * Dar de baja lógica a un empleado (desactivación).
- * Exclusivo para administradores (role_id = 1).
+ * Administrador (role_id = 1) y Recursos Humanos (role_id = 2).
+ * Recursos Humanos solo puede dar de baja a roles menores (role_id > 2).
  */
 export const deactivateEmployee = async (req, res) => {
   const { id } = req.params;
+  const isSelf = String(req.user?.id) === String(id);
 
   // Si el usuario a desactivar es el mismo que ejecuta la acción
-  if (req.user.id === id) {
+  if (isSelf) {
     return res.status(400).json({
       status: "error",
       message: "No puedes darte de baja a ti mismo.",
@@ -340,7 +394,7 @@ export const deactivateEmployee = async (req, res) => {
 
   try {
     const userResult = await query(
-      "SELECT id, email, first_name, last_name, is_active FROM users WHERE id = $1",
+      "SELECT id, email, first_name, last_name, role_id, is_active FROM users WHERE id = $1",
       [id]
     );
 
@@ -352,6 +406,23 @@ export const deactivateEmployee = async (req, res) => {
     }
 
     const employee = userResult.rows[0];
+    const requesterRoleId = Number(req.user?.role_id);
+    const targetRoleId = Number(employee.role_id);
+
+    // Regla de Protección sobre Usuarios Objetivo para Recursos Humanos (role_id: 2)
+    if (requesterRoleId === 2) {
+      if (targetRoleId <= 2) {
+        return res.status(403).json({
+          status: "error",
+          message: "No tienes permisos para modificar el perfil, rol o estado de un usuario de igual o mayor jerarquía.",
+        });
+      }
+    } else if (requesterRoleId !== 1) {
+      return res.status(403).json({
+        status: "error",
+        message: "Acceso denegado. No tienes permisos para dar de baja colaboradores.",
+      });
+    }
 
     // Si ya está inactivo
     if (employee.is_active === false) {
@@ -373,8 +444,9 @@ export const deactivateEmployee = async (req, res) => {
     const deactivatedUser = updateResult.rows[0];
 
     // Registrar en audit_logs
+    const auditAction = requesterRoleId === 1 ? "EMPLOYEE_DEACTIVATED_BY_ADMIN" : "EMPLOYEE_DEACTIVATED_BY_HR";
     await logAuditFromRequest(req, {
-      action: "EMPLOYEE_DEACTIVATED_BY_ADMIN",
+      action: auditAction,
       entityType: "users",
       entityId: id,
       oldValues: {

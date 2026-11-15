@@ -12,6 +12,7 @@ import ActivateAccountPage from './pages/ActivateAccountPage.jsx';
 import ClaimsPage from './pages/ClaimsPage.jsx';
 import RequestsPage from './pages/RequestsPage.jsx';
 import MyDisciplinaryPage from './pages/MyDisciplinaryPage.jsx';
+import ShiftsPage from './pages/ShiftsPage.jsx';
 import EmployeesPage from './pages/EmployeesPage.jsx';
 import AuditLogsPage from './pages/AuditLogsPage.jsx';
 
@@ -82,6 +83,14 @@ export const App = () => {
           element={
             <AppLayout>
               <MyDisciplinaryPage />
+            </AppLayout>
+          }
+        />
+        <Route
+          path="/turnos"
+          element={
+            <AppLayout>
+              <ShiftsPage />
             </AppLayout>
           }
         />

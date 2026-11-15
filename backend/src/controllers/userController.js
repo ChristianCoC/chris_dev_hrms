@@ -89,8 +89,9 @@ export const deleteUser = async (req, res) => {
 export const updateUser = async (req, res) => {
   const { id } = req.params;
   const { first_name, last_name, role_id } = req.body;
-  const isUpdatingSelf = req.user.id === id;
-  const isAuthorizedManager = [1, 2].includes(req.user.role_id);
+  const requesterRoleId = Number(req.user?.role_id);
+  const isUpdatingSelf = String(req.user?.id) === String(id);
+  const isAuthorizedManager = [1, 2].includes(requesterRoleId);
 
   if (!isUpdatingSelf && !isAuthorizedManager) {
     return res.status(403).json({
@@ -99,39 +100,80 @@ export const updateUser = async (req, res) => {
     });
   }
 
-  const fieldsToUpdate = [];
-  const valuesToUpdate = [];
-  let queryIndex = 1;
+  try {
+    const targetUserCheck = await query(
+      "SELECT id, email, first_name, last_name, role_id FROM users WHERE id = $1",
+      [id]
+    );
 
-  if (first_name) {
-    fieldsToUpdate.push(`first_name = $${queryIndex++}`);
-    valuesToUpdate.push(String(first_name).trim());
-  }
-
-  if (last_name) {
-    fieldsToUpdate.push(`last_name = $${queryIndex++}`);
-    valuesToUpdate.push(String(last_name).trim());
-  }
-
-  if (role_id) {
-    if (!isAuthorizedManager) {
-      return res.status(403).json({
+    if (targetUserCheck.rowCount === 0) {
+      return res.status(404).json({
         status: "error",
-        message: "Acceso denegado. No tiene los permisos necesarios para actualizar el rol de este usuario.",
+        message: "Usuario no encontrado.",
       });
     }
-    fieldsToUpdate.push(`role_id = $${queryIndex++}`);
-    valuesToUpdate.push(role_id);
-  }
 
-  if (fieldsToUpdate.length === 0) {
-    return res.status(400).json({
-      status: "error",
-      message: "No se proporcionaron campos válidos para actualizar.",
-    });
-  }
+    const currentTarget = targetUserCheck.rows[0];
+    const targetRoleId = Number(currentTarget.role_id);
 
-  try {
+    // Regla de Protección sobre Usuarios Objetivo para Recursos Humanos (role_id: 2)
+    if (requesterRoleId === 2) {
+      if (targetRoleId <= 2 || isUpdatingSelf) {
+        return res.status(403).json({
+          status: "error",
+          message: "No tienes permisos para modificar el perfil, rol o estado de un usuario de igual o mayor jerarquía.",
+        });
+      }
+
+      if (role_id !== undefined && Number(role_id) <= 2) {
+        return res.status(403).json({
+          status: "error",
+          message: "Recursos Humanos solo puede otorgar roles de menor jerarquía (Líder de Área o Empleado).",
+        });
+      }
+    }
+
+    const fieldsToUpdate = [];
+    const valuesToUpdate = [];
+    let queryIndex = 1;
+
+    if (first_name) {
+      fieldsToUpdate.push(`first_name = $${queryIndex++}`);
+      valuesToUpdate.push(String(first_name).trim());
+    }
+
+    if (last_name) {
+      fieldsToUpdate.push(`last_name = $${queryIndex++}`);
+      valuesToUpdate.push(String(last_name).trim());
+    }
+
+    if (role_id !== undefined) {
+      if (!isAuthorizedManager) {
+        return res.status(403).json({
+          status: "error",
+          message: "Acceso denegado. No tiene los permisos necesarios para actualizar el rol de este usuario.",
+        });
+      }
+
+      const allowedRoles = [1, 2, 3, 4];
+      if (!allowedRoles.includes(Number(role_id))) {
+        return res.status(400).json({
+          status: "error",
+          message: "role_id no es válido.",
+        });
+      }
+
+      fieldsToUpdate.push(`role_id = $${queryIndex++}`);
+      valuesToUpdate.push(Number(role_id));
+    }
+
+    if (fieldsToUpdate.length === 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "No se proporcionaron campos válidos para actualizar.",
+      });
+    }
+
     const updateQuery = `
       UPDATE users
       SET ${fieldsToUpdate.join(", ")}, updated_at = NOW()
@@ -141,17 +183,9 @@ export const updateUser = async (req, res) => {
     valuesToUpdate.push(id);
 
     const result = await query(updateQuery, valuesToUpdate);
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({
-        status: "error",
-        message: "Usuario no encontrado.",
-      });
-    }
-
     const updatedUser = result.rows[0];
 
-    // Registrar evento de auditoría
+    // Registrar evento de auditoría general
     await logAuditFromRequest(req, {
       action: "USER_UPDATED",
       entityType: "users",
@@ -162,6 +196,25 @@ export const updateUser = async (req, res) => {
         role_id: updatedUser.role_id,
       },
     });
+
+    // Auditoría específica si hubo cambio de rol
+    if (role_id !== undefined && Number(role_id) !== Number(currentTarget.role_id)) {
+      await logAuditFromRequest(req, {
+        action: "EMPLOYEE_ROLE_UPDATED",
+        entityType: "users",
+        entityId: id,
+        oldValues: {
+          role_id: currentTarget.role_id,
+        },
+        newValues: {
+          role_id: updatedUser.role_id,
+        },
+        details: {
+          previous_role_id: currentTarget.role_id,
+          new_role_id: updatedUser.role_id,
+        },
+      });
+    }
 
     return res.status(200).json({
       status: "success",
@@ -181,11 +234,22 @@ export const updateUser = async (req, res) => {
 
 /**
  * Crear nuevo empleado mediante invitación interna.
- * Sólo accesible para usuarios con rol Administrador (role_id = 1).
+ * Administrador (role_id = 1) puede otorgar cualquier rol (1, 2, 3 o 4).
+ * Recursos Humanos (role_id = 2) solo puede otorgar roles de menor rango (3 o 4).
  * Genera contraseña temporal, token de activación (48h) y envía email vía Ethereal.
  */
 export const createEmployee = async (req, res) => {
   const { email, first_name, last_name, role_id, document_number, file_number } = req.body;
+
+  const requesterRoleId = Number(req.user?.role_id);
+  const targetRoleId = Number(role_id);
+
+  if (requesterRoleId !== 1 && requesterRoleId !== 2) {
+    return res.status(403).json({
+      status: "error",
+      message: "Acceso denegado. No tienes permisos para crear colaboradores.",
+    });
+  }
 
   if (!email || !first_name || !last_name || !role_id) {
     return res.status(400).json({
@@ -196,10 +260,18 @@ export const createEmployee = async (req, res) => {
 
   // Validar role_id permitido
   const allowedRoles = [1, 2, 3, 4];
-  if (!allowedRoles.includes(Number(role_id))) {
+  if (!allowedRoles.includes(targetRoleId)) {
     return res.status(400).json({
       status: "error",
       message: "role_id no es válido.",
+    });
+  }
+
+  // Regla de asignación para Recursos Humanos: únicamente roles > 2 (Líder o Empleado)
+  if (requesterRoleId === 2 && targetRoleId <= 2) {
+    return res.status(403).json({
+      status: "error",
+      message: "Recursos Humanos solo puede otorgar roles de menor jerarquía (Líder de Área o Empleado).",
     });
   }
 
@@ -324,6 +396,16 @@ export const resendInvitation = async (req, res) => {
     }
 
     const user = userResult.rows[0];
+    const requesterRoleId = Number(req.user?.role_id);
+    const targetRoleId = Number(user.role_id);
+    const isSelf = String(req.user?.id) === String(user.id);
+
+    if (requesterRoleId === 2 && (targetRoleId <= 2 || isSelf)) {
+      return res.status(403).json({
+        status: "error",
+        message: "No tienes permisos para modificar el perfil, rol o estado de un usuario de igual o mayor jerarquía.",
+      });
+    }
 
     // Si la cuenta ya está activa, bloquear
     if (user.is_active === true) {

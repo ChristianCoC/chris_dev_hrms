@@ -121,6 +121,22 @@ export const testConnection = async () => {
       )
     `);
     await pool.query(`
+      CREATE TABLE IF NOT EXISTS work_shifts (
+        id SERIAL PRIMARY KEY,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        shift_date DATE NOT NULL,
+        shift_type VARCHAR(30) NOT NULL CHECK (shift_type IN ('trabajo', 'franco', 'licencia', 'feriado')),
+        start_time TIME NULL,
+        end_time TIME NULL,
+        location VARCHAR(120),
+        notes VARCHAR(300),
+        assigned_by UUID NOT NULL REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (user_id, shift_date)
+      )
+    `);
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS requests (
         id SERIAL PRIMARY KEY,
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

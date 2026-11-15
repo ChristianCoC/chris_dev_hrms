@@ -15,17 +15,17 @@ const router = Router();
 // Estadísticas para Dashboard RRHH (Admin y RRHH)
 router.get("/stats", verifyToken, authorizeRoles(1, 2), getEmployeeStats);
 
-// Listado de empleados con filtros (Admin y RRHH)
-router.get("/", verifyToken, authorizeRoles(1, 2), getEmployees);
+// Listado de empleados con filtros (Admin, RRHH y Líder de Área para planificación de turnos)
+router.get("/", verifyToken, authorizeRoles(1, 2, 3), getEmployees);
 
-// Crear nuevo empleado (solo Administrador)
-router.post("/", verifyToken, authorizeRoles(1), createEmployee);
+// Crear nuevo empleado (Administrador y Recursos Humanos)
+router.post("/", verifyToken, authorizeRoles(1, 2), createEmployee);
 
-// Reenviar invitación de activación (solo Administrador)
-router.post("/:id/resend-invitation", verifyToken, authorizeRoles(1), resendInvitation);
+// Reenviar invitación de activación (Administrador y Recursos Humanos)
+router.post("/:id/resend-invitation", verifyToken, authorizeRoles(1, 2), resendInvitation);
 
-// Baja lógica / desactivación de empleado (solo Administrador)
-router.patch("/:id/deactivate", verifyToken, authorizeRoles(1), deactivateEmployee);
+// Baja lógica / desactivación de empleado (Administrador y Recursos Humanos)
+router.patch("/:id/deactivate", verifyToken, authorizeRoles(1, 2), deactivateEmployee);
 
 // Detalle de un empleado (Admin, RRHH, o el propio empleado consultando su perfil)
 router.get("/:id", verifyToken, (req, res, next) => {

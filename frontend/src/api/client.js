@@ -13,7 +13,20 @@ export const apiFetch = async (endpoint, options = {}) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${BASE_URL}${endpoint}`, {
+  let url = `${BASE_URL}${endpoint}`;
+  if (options.params && typeof options.params === 'object') {
+    const [path, existingQuery] = endpoint.split('?');
+    const searchParams = new URLSearchParams(existingQuery || '');
+    Object.entries(options.params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') {
+        searchParams.set(k, v);
+      }
+    });
+    const qs = searchParams.toString();
+    url = `${BASE_URL}${path}${qs ? `?${qs}` : ''}`;
+  }
+
+  const response = await fetch(url, {
     ...options,
     headers,
   });
